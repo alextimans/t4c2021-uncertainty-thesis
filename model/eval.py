@@ -106,11 +106,11 @@ def eval_model(model: torch.nn.Module,
                     if post_transform is not None:
                         pred = post_transform(pred)
 
-                    pred = pred.detach().numpy() # pred.cpu().detach().numpy()
 #                    logging.info(f"{pred.shape=}")
+                    pred = np.clip(pred, 0, 255) # For uint8
                     temp_h5 = os.path.join(tmpdir, f"pred_{city}_samp{idx}")
-
-                    write_data_to_h5(data=pred, filename=temp_h5)
+                    write_data_to_h5(data=pred, dtype=np.uint8,
+                                     filename=temp_h5, compression="lzf")
                     logging.info(f"Pred for file {idx+1}/{nr_files} written to .h5.")
 
                     arcname = str(file_filter[0]).split("/")[-1] # e.g. '2019-06-04_ANTWERP_8ch.h5'
@@ -122,7 +122,7 @@ def eval_model(model: torch.nn.Module,
         zipf_mb_size = os.path.getsize(zip_file_path) / (1024 * 1024)
         logging.info(f"Zip file '{zip_file_path}' of size {zipf_mb_size:.1f} MB.")
 
-        loss_sum.append(loss_city) #loss_sum += (loss_city/nr_files)
+        loss_sum.append(loss_city)
         logging.info("Loss for {}: {:.4f}".format(city, np.mean(loss_city)))
 
     logging.info("Loss over all cities: {:.4f}".format(np.mean(loss_sum)))

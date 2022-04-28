@@ -40,15 +40,29 @@ configs = {
         "dataloader_config": {
             },
 
-        "optimizer_config": {
-            "lr": 1e-4
+        "optimizer_config": { # Default params for Adam
+            "lr": 1e-3,
+            "betas": (0.9, 0.999),
+            "weight_decay": 0,
+            "amsgrad": False,
             },
 
-        "training_config": { # Early stopping
-            "patience": 3,
-            "delta": 0,
+        "lr_scheduler_config": {
+            "patience": 0, # effect after epoch patience+1 without improvement
+            "mode": "min",
+            "factor": 0.1,
+            "threshold": 1e-4,
+            "threshold_mode": "rel",
+            "min_lr": 1e-5, # max. 2 scheduler steps in relation to lr
+            "verbose": True
+            },
+
+        "earlystop_config": {
+            "patience": 1, # effect after epoch patience+1 without improvement
+            "delta": 1e-4,
             "save_each_epoch": False,
-            "loss_improve": "min"
+            "loss_improve": "min",
+            "verbose": True
             }
     }
 }

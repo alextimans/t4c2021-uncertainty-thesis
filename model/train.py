@@ -25,7 +25,8 @@ def run_model(model: torch.nn.Module,
               epochs: int,
               dataloader_config: dict,
               optimizer_config: dict,
-              training_config: dict,
+              lr_scheduler_config: dict,
+              earlystop_config: dict,
               model_str: str,
               model_id: int,
               save_checkpoint: str,
@@ -63,18 +64,20 @@ def run_model(model: torch.nn.Module,
     logging.info(f"Training on {device=}.")
     model = model.to(device)
 
-    # Optimizer
-    optimizer = optim.Adam(model.parameters(), **optimizer_config)
     # Loss function
     loss_fct = torch.nn.functional.mse_loss #torch.nn.MSELoss()
+    # Optimizer
+    optimizer = optim.Adam(model.parameters(), **optimizer_config)
+    # LR Scheduler
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, **lr_scheduler_config)
     # Early Stopping
-    early_stopping = EarlyStopping(verbose=True, **training_config)
+    early_stopping = EarlyStopping(**earlystop_config)
 
     # Training
     loss_train, loss_val = train_model(device, epochs, optimizer, loss_fct,
                                        train_loader, val_loader, model, model_str,
                                        model_id, save_checkpoint, early_stopping,
-                                       display_system_status)
+                                       lr_scheduler, display_system_status)
     logging.info("Finished training of model %s on %s for %s epochs.",
                  model_str, device, epochs)
     logging.info("Final loss '{}' -> Train: {:.4f}, Val: {:.4f}"
@@ -85,7 +88,7 @@ def run_model(model: torch.nn.Module,
 
 def train_model(device, epochs, optimizer, loss_fct, train_loader, val_loader,
                 model, model_str, model_id, save_checkpoint, early_stopping,
-                display_system_status) -> Tuple[list, list]:
+                lr_scheduler, display_system_status) -> Tuple[list, list]:
 
     l_train, l_val = [], []
     for epoch in range(epochs):
@@ -98,7 +101,7 @@ def train_model(device, epochs, optimizer, loss_fct, train_loader, val_loader,
         if eval(display_system_status) is not False:
             logging.info(system_status()) # Visualize GPU, memory, disk usage
 
-        # Early stopping, model checkpointed every time val loss improves
+        lr_scheduler.step(loss_val) # lr_scheduler.get_last_lr(), optimizer.param_groups[0]["lr"]
         early_stopping(model, loss_val, epoch, model_str, model_id, save_checkpoint)
         if early_stopping.early_stop:
             logging.info(f"Early stopping at epoch {epoch}.")

@@ -40,7 +40,8 @@ def load_h5_file(file_path: Union[str, Path], sl: Optional[slice] = None,
 
 
 def write_data_to_h5(data: Union[np.ndarray, torch.Tensor],
-                     filename: Union[str, Path],
+                     dtype: str = None,
+                     filename: Union[str, Path] = None,
                      compression: str = "gzip", # "lzf"
                      compression_level: int = 9, # 6
                      verbose: bool = False):
@@ -52,6 +53,8 @@ def write_data_to_h5(data: Union[np.ndarray, torch.Tensor],
     ----------
     data: np.ndarray or torch.Tensor
         Data to be written to h5 file.
+    dtype: str
+        Data type to be stored as.
     filename: str or Path object
         Name of h5 file which is written.
     compression: str
@@ -62,18 +65,26 @@ def write_data_to_h5(data: Union[np.ndarray, torch.Tensor],
         Print writing logs.
     """
 
+    if isinstance(data, torch.Tensor):
+        if data.requires_grad:
+            data = data.detach().cpu().numpy()
+        else:
+            data = data.cpu().numpy()
+
+    if compression == "lzf":
+        compression_level = None
+
     filename = str(filename) if isinstance(filename, Path) else filename
     with h5py.File(filename, "w", libver="latest") as file:
 
-        if isinstance(data, torch.Tensor):
-            data = data.detach().numpy()
-
+        # https://docs.h5py.org/en/stable/faq.html#faq
         # https://www.oreilly.com/library/view/python-and-hdf5/9781491944981/ch04.html
         file.create_dataset("array",
                             data=data, # Infers shape and dtype
+                            dtype=dtype,
                             chunks=(1, *data.shape[1:]), # Optimize for row access!
                             compression=compression,
                             compression_opts=compression_level)
 
         if verbose:
-            logging.info(f"Written {filename} to h5 file with {compression=}.")
+            logging.info(f"Written {filename} to .h5 file with {compression=}.")

@@ -74,7 +74,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data_compressed_path", type=str, default="./data/compressed", required=False,
                         help="Data is extracted from this location if no data at data_raw_path.")
     parser.add_argument("--test_pred_path", type=str, default=None, required=False,
-                        help="Directory to store test set model predictions.")
+                        help="Specific directory to store test set model predictions in.")
 
     return parser
 
@@ -119,7 +119,8 @@ def main():
     dataset_config = configs[model_str]["dataset_config"]
     dataloader_config = configs[model_str]["dataloader_config"]
     optimizer_config = configs[model_str]["optimizer_config"]
-    training_config = configs[model_str]["training_config"]
+    lr_scheduler_config = configs[model_str]["lr_scheduler_config"]
+    earlystop_config = configs[model_str]["earlystop_config"]
 
     # Datasets
     logging.info("Building datasets...")
@@ -162,7 +163,8 @@ def main():
                                   data_val=data_val,
                                   dataloader_config=dataloader_config,
                                   optimizer_config=optimizer_config,
-                                  training_config=training_config,
+                                  lr_scheduler_config=lr_scheduler_config,
+                                  earlystop_config=earlystop_config,
                                   **(vars(args)))
         logging.info(f"Model trained on {device}.")
     else:

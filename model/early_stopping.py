@@ -56,9 +56,6 @@ class EarlyStopping:
             loss = -loss_val
             self.delta = -self.delta
 
-        if self.save_each_epoch:
-            self._save_checkpoint(model, loss_val, epoch, model_str, model_id, save_checkpoint)
-
         if self.best_loss is None: # First call
             self.best_loss = loss
             self._save_checkpoint(model, loss_val, epoch, model_str, model_id, save_checkpoint)
@@ -67,8 +64,11 @@ class EarlyStopping:
             self.counter += 1
             logging.info(f"EarlyStopping being patient: {self.counter}/{self.patience}.")
 
-            if (self.counter >= self.patience): # Init early stopping
+            if (self.counter > self.patience): # Init early stopping
                 self.early_stop = True
+
+            if self.save_each_epoch:
+                self._save_checkpoint(model, loss_val, epoch, model_str, model_id, save_checkpoint)
 
         else: # Improvement in val loss
             self.best_loss = loss
@@ -78,11 +78,11 @@ class EarlyStopping:
     def _save_checkpoint(self, model, loss_val, epoch, model_str, model_id, save_checkpoint):
         
         """
-        Saves model to checkpoint whenever the validation loss improves.
+        Saves model to checkpoint and optionally displays loss change.
         """
 
         if self.verbose:
-            logging.info(f"Val loss improved: {self.loss_val_min:.4f} -> {loss_val:.4f}.")
+            logging.info(f"Val loss change: {self.loss_val_min:.4f} -> {loss_val:.4f}.")
         save_torch_model_to_checkpoint(model=model,
                                        model_str=model_str,
                                        model_id=model_id,
