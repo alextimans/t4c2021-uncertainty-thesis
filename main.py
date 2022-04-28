@@ -23,9 +23,9 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Model string name. Choice of 'unet'.")
     parser.add_argument("--model_id", type=int, default=1, required=False,
                         help="Model ID to differentiate models easier than via timestamp.")
-    parser.add_argument("--model_training", default=True, required=False, choices=["True", "False"],
+    parser.add_argument("--model_training", type=str, default="True", required=False, choices=["True", "False"],
                         help="'Boolean' specifying if model training should be called.")
-    parser.add_argument("--model_evaluation", default=True, required=False, choices=["True", "False"],
+    parser.add_argument("--model_evaluation", type=str, default="True", required=False, choices=["True", "False"],
                         help="'Boolean' specifying if model evaluation should be called.")
     parser.add_argument("--resume_checkpoint", type=str, default=None, required=False,
                         help="Path to torch model .pt checkpoint to be re-loaded.")
@@ -56,16 +56,16 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Specify usage of specific device.")
     parser.add_argument("--device_ids", type=str, nargs="*", default=None, required=False,
                         help="Whitelist of device ids. If not given, all device ids are taken.")
-    parser.add_argument("--data_parallel", default=False, required=False, choices=["True", "False"],
+    parser.add_argument("--data_parallel", type=str, default="False", required=False, choices=["True", "False"],
                         help="'Boolean' specifying use of DataParallel.")
 
     parser.add_argument("--loglevel", type=str, default="info", required=False,
                         help="Provide logging level. Ex.: --loglevel debug, default=warning.")
     parser.add_argument("--random_seed", type=int, default=22, required=False,
                         help="Set random seed.")
-    parser.add_argument("--display_model", default=False, required=False, choices=["True", "False"],
+    parser.add_argument("--display_model", type=str, default="False", required=False, choices=["True", "False"],
                         help="'Boolean' to display model architecture in CLI.")
-    parser.add_argument("--display_system_status", default=False, required=False, choices=["True", "False"],
+    parser.add_argument("--display_system_status", type=str, default="False", required=False, choices=["True", "False"],
                         help="'Boolean' to display system status during training in CLI.")
 
     #parser.add_argument("--config_path", default="config.yaml", required=False, help="Configuration file location.")
