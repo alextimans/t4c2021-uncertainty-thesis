@@ -14,6 +14,10 @@ from model.checkpointing import load_torch_model_from_checkpoint
 from util.logging import t4c_apply_basic_logging_config
 from util.get_device import get_device
 
+import os
+import torch.multiprocessing as mp
+from model.train import run_model_ddp
+
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Parser for CLI arguments to run model.",
@@ -76,6 +80,9 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--test_pred_path", type=str, default=None, required=False,
                         help="Specific directory to store test set model predictions in.")
 
+    parser.add_argument("--nr_gpus", type=int, default=1, required=False,
+                        help="Nr. of GPUs given for DistributedDataParallel.")
+
     return parser
 
 
@@ -105,6 +112,7 @@ def main():
     display_model = args.display_model
     device = args.device
     data_parallel = args.data_parallel
+    nr_gpus = args.nr_gpus
 
     data_limit = args.data_limit
     train_data_limit = args.train_data_limit
@@ -158,14 +166,32 @@ def main():
     # Model training
     if eval(model_training) is not False:
         logging.info("Training model...")
-        model, device = run_model(model=model,
-                                  data_train=data_train,
-                                  data_val=data_val,
-                                  dataloader_config=dataloader_config,
-                                  optimizer_config=optimizer_config,
-                                  lr_scheduler_config=lr_scheduler_config,
-                                  earlystop_config=earlystop_config,
-                                  **(vars(args)))
+
+        if (nr_gpus > 1) and data_parallel:
+            os.environ["MASTER_ADDR"] = "localhost"
+            os.environ["MASTER_PORT"] = "8888"
+            logging.info(f"Spawning {nr_gpus} processes...")
+            model, device = mp.spawn(run_model_ddp,
+                                     nprocs=nr_gpus,
+                                     args=(model,
+                                           data_train,
+                                           data_val,
+                                           dataloader_config,
+                                           optimizer_config,
+                                           lr_scheduler_config,
+                                           earlystop_config,
+                                           vars(args)),
+                                     join=True)
+        else:
+            model, device = run_model(model=model,
+                                      data_train=data_train,
+                                      data_val=data_val,
+                                      dataloader_config=dataloader_config,
+                                      optimizer_config=optimizer_config,
+                                      lr_scheduler_config=lr_scheduler_config,
+                                      earlystop_config=earlystop_config,
+                                      **(vars(args)))
+
         logging.info(f"Model trained on {device}.")
     else:
         logging.info("Model training not called.")
