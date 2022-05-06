@@ -61,3 +61,4 @@ python main.py --model_str=unet --model_id=1 --batch_size=2 --epochs=2 --data_li
 
 - To specifically switch off either training or test set evaluation one needs to explicitly set the respective argument to ```False```, i.e. either ```model_training=False``` or ```model_evaluation=False```. Defaults for both are ```True```.
 
+- The device is either automatically inferred from the given machine or explicitly handed via argument ```device```. It takes either values ```cpu``` or ```cuda```. To run on multiple GPUs (and if those are available), set argument ```data_parallel=True``` which will activate PyTorch's DataParallel framework. Training etc. should all work smoothly in the same manner as running locally on e.g. a ```cpu```.
