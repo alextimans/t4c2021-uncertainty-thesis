@@ -123,11 +123,11 @@ def train_model(device, epochs, optimizer, loss_fct, train_loader, val_loader,
             save_torch_model_to_checkpoint(model, optimizer, model_str=model_str, epoch=epoch,
                                            loss=loss_val, save_checkpoint=path_checkpt)
 
-    comment = f"loss by epoch for {model_str}_{model_id} for epochs [{next_epoch}, {epoch}]"
+    comment = f"loss by epoch for {model_str}_{model_id} for epochs {next_epoch} to {epoch}"
     save_file_to_folder(file=l_train, filename=f"loss_train_ep{next_epoch}_{epoch}", folder_dir=path_checkpt,
-                        fmt="%.4f", header="train" + comment)
+                        fmt="%.4f", header="train " + comment)
     save_file_to_folder(file=l_val, filename=f"loss_val_ep{next_epoch}_{epoch}", folder_dir=path_checkpt,
-                        fmt="%.4f", header="val" + comment)
+                        fmt="%.4f", header="val " + comment)
 
     return l_train, l_val
 
