@@ -4,10 +4,11 @@ from typing import Tuple
 import torch.cuda as cuda
 
 
-def get_device(device: str = None, data_parallel: bool = False) -> Tuple[str, str]:
+def get_device(device: str = None, data_parallel: str = "False") -> Tuple[str, str]:
 
     logging.info(f"Requested {device=}.")
     gpu_available = cuda.is_available()
+    data_parallel = eval(data_parallel) # str to bool
     parallel_use = False
 
     if (device is None) and (not gpu_available):
@@ -31,7 +32,6 @@ def get_device(device: str = None, data_parallel: bool = False) -> Tuple[str, st
     elif (device == "cuda") and gpu_available:
         nr_devices = cuda.device_count()
 
-        # https://pytorch.org/tutorials/beginner/blitz/data_parallel_tutorial.html
         if data_parallel and (nr_devices > 1):
             logging.info(f"DataParallel on {nr_devices} GPUs possible.")
             parallel_use = True

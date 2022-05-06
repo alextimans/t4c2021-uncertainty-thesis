@@ -4,31 +4,10 @@ import os
 import datetime
 import logging
 from pathlib import Path
-from typing import Union, Tuple
+from typing import Union
 
 import numpy as np
 import torch
-
-
-def load_torch_opt_from_checkpoint(checkpt_path: Union[str, Path],
-                                   optimizer: torch.optim.Optimizer,
-                                   map_location: str = None) -> Tuple[int, float]:
-
-    state_dict = torch.load(checkpt_path, map_location)
-
-    msg = f"Calling on model training but '{checkpt_path}' has no optimizer state_dict."
-    assert isinstance(state_dict, dict) and ("optimizer" in state_dict), msg
-    optimizer.load_state_dict(state_dict["optimizer"])
-    logging.info(f"Loaded optimizer state_dict from checkpoint '{checkpt_path}'.")
-
-    if (state_dict["epoch"] >= 0) and ("loss" in state_dict):
-        last_epoch, last_loss = state_dict["epoch"], state_dict["loss"]
-        logging.info(f"Picking up training from {last_epoch=} with {last_loss=}.")
-    else:
-        last_epoch, last_loss = -1, None
-        logging.info("No previous training info, returning {last_epoch=}, {last_loss=}.")
-
-    return last_epoch, last_loss
 
 
 def load_torch_model_from_checkpoint(checkpt_path: Union[str, Path],
@@ -59,13 +38,8 @@ def load_torch_model_from_checkpoint(checkpt_path: Union[str, Path],
     logging.info(f"Loaded model from checkpoint '{checkpt_path}'.")
 
 
-def save_torch_model_to_checkpoint(model: torch.nn.Module,
-                                   optimizer: torch.optim.Optimizer = None,
-                                   model_str: str = None,
-                                   model_id: int = None,
-                                   epoch: int = -1, # No trained epochs
-                                   loss: float = None,
-                                   save_checkpoint: str = ""):
+def save_torch_model_to_checkpoint(model: torch.nn.Module, model_str: str,
+                                   model_id: int, epoch: int, save_checkpoint: str = ""):
 
     """ 
     Saves a torch model as a checkpoint in specified location.
@@ -74,41 +48,26 @@ def save_torch_model_to_checkpoint(model: torch.nn.Module,
     ----------
     model: torch.nn.Module
         Model to create checkpoint of.
-    optimizer: torch.optim.Optimizer
-        Optimizer to add to checkpoint.
     model_str: str
         Model string name.
     model_id: int
         Model ID to create unique checkpoints folder.
     epoch: int
         Nr. of epochs model was trained.
-    loss: float
-        Loss we want to save e.g. validation loss.
     save_checkpoint: str
         Path to checkpoints folder. Default is local directory.
     """
 
-    if model_str is not None and model_id is not None:
-        save_checkpoint = Path(os.path.join(save_checkpoint, f"{model_str}_{model_id}"))
-    else:
-        save_checkpoint = Path(save_checkpoint)
-
-    save_checkpoint.mkdir(exist_ok=True, parents=True)
+    checkpt_path = Path(os.path.join(save_checkpoint, f"{model_str}_{model_id}"))
+    checkpt_path.mkdir(exist_ok=True, parents=True)
 
     timestamp = datetime.datetime.strftime(datetime.datetime.now(), "%m%d%H%M")
-    path_checkpt = os.path.join(save_checkpoint, f"{model_str}_ep{epoch}_{timestamp}.pt")
+    save_dict = {"epoch": epoch, "model": model.state_dict()}
+    checkpt_name = f"{model_str}_ep{epoch+1}_{timestamp}.pt"
+    path = os.path.join(checkpt_path, checkpt_name)
 
-    save_dict = {"epoch": epoch,
-                 "model": model.state_dict()}
-
-    if optimizer is not None:
-        save_dict.update({"optimizer": optimizer.state_dict()})
-
-    if loss is not None:
-        save_dict.update({"loss": loss})
-
-    torch.save(save_dict, path_checkpt)
-    logging.info(f"Model {model_str} trained to {epoch=} saved as '{path_checkpt}'.")
+    torch.save(save_dict, path)
+    logging.info(f"Model {model_str} trained for {epoch+1} epochs saved as '{path}'.")
 
 
 def save_file_to_folder(file = None, filename: str = None,

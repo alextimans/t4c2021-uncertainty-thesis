@@ -4,6 +4,8 @@ import logging
 import numpy as np
 import torch
 
+from model.checkpointing import save_torch_model_to_checkpoint
+
 
 class EarlyStopping:
     def __init__(self,
@@ -44,13 +46,10 @@ class EarlyStopping:
     def __call__(self,
                  model: torch.nn.Module,
                  loss_val: float = None,
-                 last_loss: float = None) -> bool:
-
-        save_to_checkpt = False
-
-        if last_loss is not None:
-            self.best_loss = last_loss
-            self.loss_val_min = last_loss
+                 epoch: int = None,
+                 model_str: str = None,
+                 model_id: int = None,
+                 save_checkpoint: str = None):
 
         loss = loss_val
         if (self.loss_improve == "max"):
@@ -59,10 +58,7 @@ class EarlyStopping:
 
         if self.best_loss is None: # First call
             self.best_loss = loss
-            if self.verbose:
-                logging.info(f"Val loss change: {self.loss_val_min:.4f} -> {loss:.4f}")
-            self.loss_val_min = loss
-            save_to_checkpt = True
+            self._save_checkpoint(model, loss_val, epoch, model_str, model_id, save_checkpoint)
 
         elif (loss >= self.best_loss - self.delta): # No improvement in val loss
             self.counter += 1
@@ -72,17 +68,24 @@ class EarlyStopping:
                 self.early_stop = True
 
             if self.save_each_epoch:
-                if self.verbose:
-                    logging.info(f"Val loss change: {self.loss_val_min:.4f} -> {loss:.4f}")
-                self.loss_val_min = loss
-                save_to_checkpt = True
+                self._save_checkpoint(model, loss_val, epoch, model_str, model_id, save_checkpoint)
 
         else: # Improvement in val loss
-            self.counter = 0
             self.best_loss = loss
-            if self.verbose:
-                logging.info(f"Val loss change: {self.loss_val_min:.4f} -> {loss:.4f}")
-            self.loss_val_min = loss
-            save_to_checkpt = True
+            self._save_checkpoint(model, loss_val, epoch, model_str, model_id, save_checkpoint)
+            self.counter = 0
 
-        return save_to_checkpt
+    def _save_checkpoint(self, model, loss_val, epoch, model_str, model_id, save_checkpoint):
+        
+        """
+        Saves model to checkpoint and optionally displays loss change.
+        """
+
+        if self.verbose:
+            logging.info(f"Val loss change: {self.loss_val_min:.4f} -> {loss_val:.4f}.")
+        save_torch_model_to_checkpoint(model=model,
+                                       model_str=model_str,
+                                       model_id=model_id,
+                                       epoch=epoch,
+                                       save_checkpoint=save_checkpoint)
+        self.loss_val_min = loss_val

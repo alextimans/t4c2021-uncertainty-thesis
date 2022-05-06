@@ -18,7 +18,7 @@ from data.dataset import T4CDataset
 from util.h5_util import write_data_to_h5
 from model.configs import configs
 from model.checkpointing import save_file_to_folder
-from data.data_layout import CITY_NAMES, CITY_TRAIN_ONLY, MAX_FILE_DAY_IDX, TWO_HOURS
+from data.data_layout import CITY_NAMES, MAX_FILE_DAY_IDX, TWO_HOURS
 
 
 def eval_model(model: torch.nn.Module,
@@ -41,7 +41,7 @@ def eval_model(model: torch.nn.Module,
     model = model.to(device)
     loss_fct = torch.nn.functional.mse_loss
     post_transform = configs[model_str].get("post_transform", None)
-    cities = [city for city in CITY_NAMES if city not in CITY_TRAIN_ONLY]
+    cities = CITY_NAMES
     loss_sum = []
 
     if dataset_limit[0] is not None: # Limit #cities
@@ -149,8 +149,22 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use) -> T
 
     with tqdm(dataloader) as tloader:
         for batch, (X, y) in enumerate(tloader):
-            if batch == batch_limit: # True batch runs on left side of tqdm load bar
+            if batch == batch_limit:
                 break
+
+            """
+            - use batch_size = 1 for dataloader
+            - add a dimension to pred empty tensor for the augmentations
+            - write data augmentation module that receives X = (1, 12*8, 496, 448)
+            and augments it returning X' = (4, 12*8, 496, 448) i.e. 4 augmentations
+            or 3 augmentations and the original X whose predictions can then
+            be used with the ensembling to compute the epistemic uncertainty
+            or more than 4
+            - Predict on augmented data returning y_pred = (4, 6*8, 496, 448)
+            - Disregard loss evaluation etc. since only want to save predictions
+              or evaluate loss using avg. over the augmented predictions
+            - Fill pred with y_pred = (1, 4, 6*8, 496, 448)
+            """
 
             X, y = X.to(device, non_blocking=parallel_use), y.to(device, non_blocking=parallel_use)
             y_pred = model(X) # Shape: [batch_size, 6*8, 496, 448]

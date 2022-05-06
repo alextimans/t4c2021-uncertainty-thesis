@@ -11,8 +11,6 @@ from torch.utils.data import DataLoader, RandomSampler
 from tqdm import tqdm
 
 from model.early_stopping import EarlyStopping
-from model.checkpointing import load_torch_opt_from_checkpoint
-from model.checkpointing import save_torch_model_to_checkpoint
 from model.checkpointing import save_file_to_folder
 from data.dataset import T4CDataset
 from util.monitoring import system_status
@@ -30,7 +28,6 @@ def run_model(model: torch.nn.Module,
               earlystop_config: dict,
               model_str: str,
               model_id: int,
-              resume_checkpoint: str,
               save_checkpoint: str,
               parallel_use: bool,
               display_system_status: bool,
@@ -66,18 +63,12 @@ def run_model(model: torch.nn.Module,
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, **lr_scheduler_config)
     # Early Stopping
     early_stopping = EarlyStopping(**earlystop_config)
-    # Load last training state
-    if resume_checkpoint is not None:
-        last_epoch, last_loss = load_torch_opt_from_checkpoint(resume_checkpoint,
-                                                               optimizer, device)
-    else:
-        last_epoch, last_loss = -1, None
+
     # Training
     loss_train, loss_val = train_model(device, epochs, optimizer, loss_fct,
                                        train_loader, val_loader, model, model_str,
                                        model_id, save_checkpoint, early_stopping,
-                                       lr_scheduler, display_system_status, parallel_use,
-                                       last_epoch, last_loss)
+                                       lr_scheduler, display_system_status, parallel_use)
     logging.info("Finished training of model %s on %s for %s epochs.",
                  model_str, device, epochs)
     logging.info("Final loss '{}' -> Train: {:.4f}, Val: {:.4f}"
@@ -88,25 +79,21 @@ def run_model(model: torch.nn.Module,
 
 def train_model(device, epochs, optimizer, loss_fct, train_loader, val_loader,
                 model, model_str, model_id, save_checkpoint, early_stopping,
-                lr_scheduler, display_system_status, parallel_use,
-                last_epoch, last_loss) -> Tuple[list, list]:
+                lr_scheduler, display_system_status, parallel_use) -> Tuple[list, list]:
 
-    path_checkpt = os.path.join(save_checkpoint, f"{model_str}_{model_id}")
-    next_epoch = last_epoch + 1
+    folder_dir = os.path.join(save_checkpoint, f"{model_str}_{model_id}")
     l_train, l_val = [], [] # Loss per epoch
 
-    for epoch in range(next_epoch, next_epoch + epochs):
+    for epoch in range(epochs):
 
         loss_train, l_t = _train_epoch(device, epoch, optimizer, loss_fct, train_loader, model, parallel_use)
         loss_val, l_v = _val_epoch(device, epoch, loss_fct, val_loader, model, parallel_use)
+        l_train.append(loss_train); l_val.append(loss_val)
 
-        l_train.append(loss_train)
-        l_val.append(loss_val)
-
-        save_file_to_folder(file=l_t, filename=f"loss_t_bybatch_{epoch}", folder_dir=path_checkpt,
-                            fmt="%.4f", header=f"train loss by batch for {model_str}_{model_id} for {epoch=}")
-        save_file_to_folder(file=l_v, filename=f"loss_v_bybatch_{epoch}", folder_dir=path_checkpt,
-                            fmt="%.4f", header=f"val loss by batch for {model_str}_{model_id} for {epoch=}")
+        save_file_to_folder(file=l_t, filename=f"loss_t_bybatch_{epoch}", folder_dir=folder_dir,
+                            fmt="%.4f", header=f"{model_str}_{model_id} after {epoch=}")
+        save_file_to_folder(file=l_v, filename=f"loss_v_bybatch_{epoch}", folder_dir=folder_dir,
+                            fmt="%.4f", header=f"{model_str}_{model_id} after {epoch=}")
 
         logging.info("Epoch: {}, Train loss: {:.4f}, Val loss: {:.4f}"
                      .format(epoch, loss_train, loss_val))
@@ -114,20 +101,15 @@ def train_model(device, epochs, optimizer, loss_fct, train_loader, val_loader,
             logging.info(system_status()) # Visualize GPU, memory, disk usage
 
         lr_scheduler.step(loss_val)
-
-        save_to_checkpt = early_stopping(model, loss_val, last_loss)
+        early_stopping(model, loss_val, epoch, model_str, model_id, save_checkpoint)
         if early_stopping.early_stop:
-            logging.info(f"Early stopping at {epoch=}.")
+            logging.info(f"Early stopping at epoch {epoch}.")
             break
-        if save_to_checkpt:
-            save_torch_model_to_checkpoint(model, optimizer, model_str=model_str, epoch=epoch,
-                                           loss=loss_val, save_checkpoint=path_checkpt)
 
-    comment = f"loss by epoch for {model_str}_{model_id} for epochs [{next_epoch}, {epoch}]"
-    save_file_to_folder(file=l_train, filename=f"loss_train_ep{next_epoch}_{epoch}", folder_dir=path_checkpt,
-                        fmt="%.4f", header="train" + comment)
-    save_file_to_folder(file=l_val, filename=f"loss_val_ep{next_epoch}_{epoch}", folder_dir=path_checkpt,
-                        fmt="%.4f", header="val" + comment)
+    save_file_to_folder(file=l_train, filename="loss_train", folder_dir=folder_dir,
+                        fmt="%.4f", header=f"{model_str}_{model_id} trained until {epoch=}")
+    save_file_to_folder(file=l_val, filename="loss_val", folder_dir=folder_dir,
+                        fmt="%.4f", header=f"{model_str}_{model_id} trained until {epoch=}")
 
     return l_train, l_val
 

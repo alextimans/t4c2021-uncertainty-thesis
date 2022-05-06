@@ -10,8 +10,8 @@ def train_val_split(data_limit: int = None) -> Tuple[int, int]:
     if data_limit <= 1:
         raise ValueError(f"Cannot train and validate on {data_limit} samples only.")
 
-    train_fraction = np.round(TRAIN_FILES / (TRAIN_FILES + VAL_FILES), 2)
-    val_fraction = np.round(1 - train_fraction, 2)
+    train_fraction = np.round(TRAIN_FILES / (TRAIN_FILES + VAL_FILES), 3)
+    val_fraction = np.round(1 - train_fraction, 3)
 
     assert np.isclose(train_fraction + val_fraction, 1.0)
 

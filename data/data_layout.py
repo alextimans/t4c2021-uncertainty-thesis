@@ -14,9 +14,12 @@ speed_channel_indices = [ch for ch, l in enumerate(channel_labels) if "speed" in
 
 # Constants
 
-# Used in eval.py
+# Used in eval.py, set_data_folder_str.py
 CITY_NAMES = ["ANTWERP", "BANGKOK", "BARCELONA", "BERLIN",
               "CHICAGO", "ISTANBUL", "MELBOURNE", "MOSCOW"]
+CITY_TRAIN_ONLY = ["BERLIN", "CHICAGO", "ISTANBUL", "MELBOURNE"]
+CITY_TRAIN_VAL_TEST = ["BANGKOK", "BARCELONA", "MOSCOW"]
+CITY_VAL_TEST_ONLY = ["ANTWERP"]
 
 # Used in dataset.py, eval.py
 MAX_ONE_DAY_SMP_IDX = 264 # Last sample 22-24h (5m slot indices 264-288)
@@ -24,6 +27,6 @@ MAX_FILE_DAY_IDX = 288 # 288 x 5m slots per h5 file
 TWO_HOURS = 24 # 12 * 2 x 5m slots
 
 # Used in train_val_split.py
-TRAIN_FILES = 126 # 0.7 * 180 h5 files per city and year
-VAL_FILES = 27 # 0.15 * 180 h5 files per city and year
-TEST_FILES = 27 # 0.15 * 180 h5 files per city and year
+TRAIN_FILES = 1260 # 7 * 180 files
+VAL_FILES = 450 # 5 * 90 files
+TEST_FILES = 450 # 5 * 90 files

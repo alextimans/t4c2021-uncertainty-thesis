@@ -1,0 +1,2 @@
+# val loss by batch for unet_1 for epoch=1
+13.7689

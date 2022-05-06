@@ -1,0 +1,3 @@
+# trainloss by epoch for unet_1 for epochs [0, 1]
+10.5752
+10.3546

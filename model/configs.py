@@ -13,7 +13,7 @@ configs = {
             "in_channels": 12 * 8,
             "out_channels": 6 * 8,
             "depth": 5,
-            "layer_out_pow2": 6,
+            "layer_out_pow2": 6, # t4c arg: 'wf'
             "padding": True,
             "batch_norm": True,
             "up_mode": "upconv"
@@ -41,7 +41,7 @@ configs = {
             },
 
         "optimizer_config": { # Default params for Adam
-            "lr": 1e-3,
+            "lr": 1e-3, # t4c arg: 1e-4
             "betas": (0.9, 0.999),
             "weight_decay": 0,
             "amsgrad": False,
@@ -60,7 +60,7 @@ configs = {
         "earlystop_config": {
             "patience": 1, # effect after epoch patience+1 without improvement
             "delta": 1e-4,
-            "save_each_epoch": False,
+            "save_each_epoch": True,
             "loss_improve": "min",
             "verbose": True
             }

@@ -5,19 +5,19 @@ import logging
 import sys
 #import yaml
 
-import torch
-
 from data.dataset import T4CDataset
-
 from model.configs import configs
 from model.train import run_model
 from model.train_val_split import train_val_split
 from model.eval import eval_model
 from model.checkpointing import load_torch_model_from_checkpoint
-
 from util.logging import t4c_apply_basic_logging_config
 from util.get_device import get_device
 from util.set_seed import set_seed
+
+import os
+import torch.multiprocessing as mp
+from model.train import run_model_ddp
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -60,14 +60,14 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", type=str, default=None, required=False, choices=["cpu", "cuda"],
                         help="Specify usage of specific device.")
     parser.add_argument("--device_ids", type=str, nargs="*", default=None, required=False,
-                        help="Whitelist of device ids. If not given, all device ids are taken. For GPUs training.")
+                        help="Whitelist of device ids. If not given, all device ids are taken.")
     parser.add_argument("--data_parallel", type=str, default="False", required=False, choices=["True", "False"],
                         help="'Boolean' specifying use of DataParallel.")
 
     parser.add_argument("--loglevel", type=str, default="info", required=False,
                         help="Provide logging level. Ex.: --loglevel debug, default=warning.")
     parser.add_argument("--random_seed", type=int, default=22, required=False,
-                        help="Set manual random seed.")
+                        help="Set random seed.")
     parser.add_argument("--display_model", type=str, default="False", required=False, choices=["True", "False"],
                         help="'Boolean' to display model architecture in CLI.")
     parser.add_argument("--display_system_status", type=str, default="False", required=False, choices=["True", "False"],
@@ -81,6 +81,9 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--test_pred_path", type=str, default=None, required=False,
                         help="Specific directory to store test set model predictions in.")
 
+    parser.add_argument("--nr_gpus", type=int, default=1, required=False,
+                        help="Nr. of GPUs given for DistributedDataParallel.")
+
     return parser
 
 
@@ -88,10 +91,8 @@ def main():
 
     """
     - CLI arguments handling
-    - Seed setting
     - Dataset creation
     - Model creation (optional: checkpoint reloading)
-    - Device setting
     - Call on model training
     - Call on model test set evaluation
     """
@@ -111,9 +112,9 @@ def main():
     resume_checkpoint = args.resume_checkpoint
     display_model = args.display_model
     device = args.device
-    device_ids = args.device_ids
     data_parallel = args.data_parallel
     random_seed = args.random_seed
+    nr_gpus = args.nr_gpus
 
     data_limit = args.data_limit
     train_data_limit = args.train_data_limit
@@ -131,9 +132,9 @@ def main():
     lr_scheduler_config = configs[model_str]["lr_scheduler_config"]
     earlystop_config = configs[model_str]["earlystop_config"]
 
-    # Set (all) seeds
+    # Seed
     random_seed = set_seed(random_seed)
-    logging.info(f"Used {random_seed=} for seeds.")
+    logging.info(f"Set {random_seed=}.")
 
     # Datasets
     logging.info("Building datasets...")
@@ -162,16 +163,6 @@ def main():
     if eval(display_model) is not False: # str to bool
         logging.info(model)
 
-    # Device setting
-    device, parallel_use = get_device(device, data_parallel)
-    if parallel_use: # Multiple GPU usage
-        model = torch.nn.DataParallel(model, device_ids=device_ids)
-        logging.info(f"Using {len(model.device_ids)} GPUs: {model.device_ids}.")
-        device = f"cuda:{model.device_ids[0]}" # cuda:0 is main process device
-    logging.info(f"Using {device=}, {parallel_use=}.")
-    vars(args).pop("device")
-
-    # Checkpoint loading
     if resume_checkpoint is not None:
         load_torch_model_from_checkpoint(checkpt_path=resume_checkpoint,
                                          model=model, map_location=device)
@@ -181,19 +172,38 @@ def main():
     # Model training
     if eval(model_training) is not False:
         logging.info("Training model...")
-        model = run_model(model=model,
-                          data_train=data_train,
-                          data_val=data_val,
-                          dataloader_config=dataloader_config,
-                          optimizer_config=optimizer_config,
-                          lr_scheduler_config=lr_scheduler_config,
-                          earlystop_config=earlystop_config,
-                          device=device,
-                          parallel_use=parallel_use,
-                          **(vars(args)))
-        logging.info("Model trained.")
+
+        if (nr_gpus > 1) and data_parallel:
+            os.environ["MASTER_ADDR"] = "localhost"
+            os.environ["MASTER_PORT"] = "8888"
+            logging.info(f"Spawning {nr_gpus} processes...")
+            model, device = mp.spawn(run_model_ddp,
+                                     nprocs=nr_gpus,
+                                     args=(model,
+                                           data_train,
+                                           data_val,
+                                           dataloader_config,
+                                           optimizer_config,
+                                           lr_scheduler_config,
+                                           earlystop_config,
+                                           vars(args)),
+                                     join=True)
+        else:
+            model, device = run_model(model=model,
+                                      data_train=data_train,
+                                      data_val=data_val,
+                                      dataloader_config=dataloader_config,
+                                      optimizer_config=optimizer_config,
+                                      lr_scheduler_config=lr_scheduler_config,
+                                      earlystop_config=earlystop_config,
+                                      **(vars(args)))
+
+        logging.info(f"Model trained on {device}.")
     else:
         logging.info("Model training not called.")
+        device, _ = get_device(device, data_parallel)
+        logging.info(f"Using device '{device}'.")
+    vars(args).update({"device": device}) # Update args to valid device
 
     # Test set evaluation
     if eval(model_evaluation) is not False:
@@ -202,13 +212,10 @@ def main():
                    dataset_limit=test_data_limit,
                    dataset_config=dataset_config,
                    dataloader_config=dataloader_config,
-                   device=device,
-                   parallel_use=parallel_use,
                    **(vars(args)))
         logging.info("Model evaluated.")
     else:
         logging.info("Model test set evaluation not called.")
-
     logging.info("Main finished.")
 
 
