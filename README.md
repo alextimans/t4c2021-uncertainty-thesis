@@ -14,7 +14,7 @@ export PYTHONPATH="$PYTHONPATH:$PWD"
 
 3. Prepare the data
   - Make sure that all the city data is in a folder ```t4c2021-uncertainty-thesis/data/raw``` in uncompressed city folders as given by the competition.
-  - Optional: Manually remove 4 files ```2020-02-29_{city}_8ch.h5``` for leap year 2020, where ```city=[ANTWERP, BANGKOK, BARCELONA, MOSCOW]```
+  - Manually remove 4 files ```2020-02-29_{city}_8ch.h5``` for leap year 2020, where ```city=[ANTWERP, BANGKOK, BARCELONA, MOSCOW]```
   - To obtain the train-val-test split run the following in CLI.
   ```
   python data/set_data_folder_str.py --data_raw_path="./data/raw"
