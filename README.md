@@ -6,13 +6,13 @@ gh repo clone alextimans/t4c2021-uncertainty-thesis
 ```
 
 2. Set python environment
+- Make sure to be in the parent directory of ```t4c2021-uncertainty-thesis``` as working directory.
 ```
 cd t4c2021-uncertainty-thesis
 conda activate [python package env]
 export PYTHONPATH="$PYTHONPATH:$PWD"
 cd ..
 ```
-- Make sure to be in the parent directory of ```t4c2021-uncertainty-thesis``` as working directory.
 
 3. Prepare the data
   - Put all the data in a folder ```[parent dir]/data/raw``` in the parent directory in uncompressed city folders as given by the t4c competition.
