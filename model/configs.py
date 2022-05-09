@@ -41,7 +41,7 @@ configs = {
             },
 
         "optimizer_config": { # Default params for Adam
-            "lr": 1e-3, # t4c arg: 1e-4
+            "lr": 1e-4, # t4c arg: 1e-4
             "betas": (0.9, 0.999),
             "weight_decay": 0,
             "amsgrad": False,

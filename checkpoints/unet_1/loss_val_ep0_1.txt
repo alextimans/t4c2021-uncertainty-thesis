@@ -1,3 +1,0 @@
-# valloss by epoch for unet_1 for epochs [0, 1]
-13.7853
-13.7689

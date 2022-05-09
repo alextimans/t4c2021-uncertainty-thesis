@@ -7,7 +7,7 @@ from typing import Tuple
 
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader, RandomSampler
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from tqdm import tqdm
 
 from model.early_stopping import EarlyStopping
@@ -40,14 +40,14 @@ def run_model(model: torch.nn.Module,
     logging.info("Running %s..." %(sys._getframe().f_code.co_name)) # Current fct name
 
     # Load data
-    train_sampler = RandomSampler(data_train)
+    train_sampler = RandomSampler(data_train) # generator seed?
     train_loader = DataLoader(dataset=data_train,
                               batch_size=batch_size,
                               num_workers=num_workers,
                               sampler=train_sampler,
                               pin_memory=parallel_use,
                               **dataloader_config)
-    val_sampler = RandomSampler(data_val)
+    val_sampler = SequentialSampler(data_val)
     val_loader = DataLoader(dataset=data_val,
                             batch_size=batch_size,
                             num_workers=num_workers,
@@ -140,8 +140,9 @@ def _train_epoch(device, epoch, optimizer, loss_fct, dataloader, model, parallel
     with tqdm(dataloader) as tepoch:
         for batch, (X, y) in enumerate(tepoch):
             X, y = X.to(device, non_blocking=parallel_use), y.to(device, non_blocking=parallel_use)
-            y_pred = model(X) # Shape: [batch_size, 6*8, 496, 448]
-            loss = loss_fct(y_pred, y) # Mean over batch samples + channels + pixels
+            X = X / 255 # Range [0, 1]
+            y_pred = model(X) # Shape [batch_size, 6*8, 496, 448], Range [0, 255]
+            loss = loss_fct(y_pred[:, :, 1:, 6:-6], y[:, :, 1:, 6:-6]) # Mean over batch samples + channels + pixels
 
             optimizer.zero_grad()
             loss.backward()
@@ -165,8 +166,9 @@ def _val_epoch(device, epoch, loss_fct, dataloader, model, parallel_use) -> Tupl
     with tqdm(dataloader) as tepoch:
         for batch, (X, y) in enumerate(tepoch):
             X, y = X.to(device, non_blocking=parallel_use), y.to(device, non_blocking=parallel_use)
+            X = X / 255
             y_pred = model(X)
-            loss = loss_fct(y_pred, y)
+            loss = loss_fct(y_pred[:, :, 1:, 6:-6], y[:, :, 1:, 6:-6]) # Loss on unpadded data
 
             l_v.append(float(loss.item()))
             loss_sum += float(loss.item())

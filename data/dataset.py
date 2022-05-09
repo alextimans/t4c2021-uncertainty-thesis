@@ -72,7 +72,7 @@ class T4CDataset(Dataset):
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         if idx > self.__len__():
-            raise IndexError(f"Sample index {idx} out of bounds for length {self.__len__()}.")
+            raise IndexError(f"Sample {idx=} out of bounds for len {self.__len__()}.")
 
         file_idx = idx // MAX_FILE_DAY_IDX # Div and floor to int
         start_hour = idx % MAX_FILE_DAY_IDX # Modulo
@@ -100,7 +100,7 @@ class T4CDataset(Dataset):
             sl = slice(start_hour, start_hour + TWO_HOURS) # 24 x 5m slots
             two_hours = self._load_h5_file(self.files[file_idx], sl)
 
-        assert two_hours.size(dim=0) == TWO_HOURS, f"two_hours not size 24 but {two_hours.size(0)}"
+        assert two_hours.size(0) == TWO_HOURS, f"two_hours of size {two_hours.size(0)}"
         X, y = data_split_xy(two_hours)
 
         if self.transform is not None:
@@ -119,14 +119,14 @@ def data_split_xy(data, offset: int = 0) -> Tuple[torch.Tensor, torch.Tensor]:
 
     Parameters
     ----------
-    data: Data, tensor of shape (24+, 495, 436, 8) of type uint8.
+    data: Data, tensor of shape (24, 495, 436, 8).
     offset: int
         Extra offsetting of sample.
 
     Returns
     -------
-        X: Input, tensor of shape (12, 495, 436, 8) of type uint8.
-        y: Label, tensor of shape (6, 495, 436, 8) of type uint8.
+        X: Input, tensor of shape (12, 495, 436, 8).
+        y: Label, tensor of shape (6, 495, 436, 8).
     """
 
     X = data[offset:(offset + 12)]

@@ -1,2 +1,0 @@
-# rows: loss per city, cols: loss per file for that city, dataset_limit=[1, 2, 2]
-14.4385 13.3098

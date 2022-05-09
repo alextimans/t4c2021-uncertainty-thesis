@@ -110,7 +110,7 @@ def eval_model(model: torch.nn.Module,
                         pred = post_transform(pred)
 
 #                    logging.info(f"{pred.shape=}")
-                    pred = np.clip(pred, 0, 255) # For uint8
+                    pred = torch.clamp(pred, 0, 255) # For uint8
                     temp_h5 = os.path.join(tmpdir, f"pred_{city}_samp{idx}")
                     write_data_to_h5(data=pred, dtype=np.uint8,
                                      filename=temp_h5, compression="lzf")
@@ -153,8 +153,9 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use) -> T
                 break
 
             X, y = X.to(device, non_blocking=parallel_use), y.to(device, non_blocking=parallel_use)
-            y_pred = model(X) # Shape: [batch_size, 6*8, 496, 448]
-            loss = loss_fct(y_pred, y)
+            X = X / 255
+            y_pred = model(X) # Shape [batch_size, 6*8, 496, 448], Range [0, 1]
+            loss = loss_fct(y_pred[:, :, 1:, 6:-6], y[:, :, 1:, 6:-6])
 
             loss_sum += float(loss.item())
             loss_test = float(loss_sum/(batch+1))
