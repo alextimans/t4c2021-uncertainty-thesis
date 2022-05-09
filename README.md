@@ -4,19 +4,25 @@
 ```
 gh repo clone alextimans/t4c2021-uncertainty-thesis
 ```
-
-2. Set python environment
 - Make sure to be in the parent directory of ```t4c2021-uncertainty-thesis``` as working directory.
+
+2. Set-up python env (with conda package manager)
+- Either generate python env using the t4c competition environment via ```env_t4c.yml``` and add potentially missing packages manually, or use ```env_current.yml``` for a more stringent but encompassing environment.
+- Uncomment related lines in either ```.yml``` file in case of local machine with GPU support.
+```
+conda env create -f t4c2021-uncertainty-thesis/misc/env_current.yml
+conda activate t4c
+```
+- Init code repo for python path
 ```
 cd t4c2021-uncertainty-thesis
-conda activate [python package env]
 export PYTHONPATH="$PYTHONPATH:$PWD"
 cd ..
 ```
 
 3. Prepare the data
-  - Put all the data in a folder ```[parent dir]/data/raw``` in the parent directory in uncompressed city folders as given by the t4c competition.
-  - Run following call in CLI to create data folders and remove 2020 leap year days.
+- Put all the data in a folder ```[parent dir]/data/raw``` in the parent directory in uncompressed city folders as given by the t4c competition.
+- Run following call in CLI to create data folders and remove 2020 leap year days.
 ```
   python t4c2021-uncertainty-thesis/data/set_data_folder_str.py --data_raw_path="./data/raw" --remove_leap_days=True
 ```
