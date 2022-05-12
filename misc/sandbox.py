@@ -20,19 +20,42 @@ from metrics.mse import mse
 
 
 BASE_FOLDER = 'data/raw'
-train_files = sorted(glob.glob(f'{BASE_FOLDER}/**/training/*8ch.h5', recursive=True))
+files = sorted(glob.glob(f'{BASE_FOLDER}/**/test/*8ch.h5', recursive=True))
+file_idx = 156
+file = files[file_idx]
 
-file_idx = 1500
-file = train_files[file_idx]
-city, date = file.split('/')[2], file.split('/')[4].split('_')[0]
+file = "./data/raw_samp/ANTWERP/test/2020-06-07_ANTWERP_8ch.h5"
+file = "./data/raw_samp/BANGKOK/test/2020-04-29_BANGKOK_8ch.h5"
+file = "./data/raw_samp/BARCELONA/test/2019-05-13_BARCELONA_8ch.h5"
+file = "./data/raw_samp/MOSCOW/test/2019-02-22_MOSCOW_8ch.h5"
+
+city, date = file.split('/')[3], file.split('/')[5].split('_')[0]
 print(f'Selected file: {file}')
+
 data = load_h5_file(file)
+data = data[1:11, ...]
+
 print(f'Data: shape {data.shape} and type {data.dtype}')
+
+pred = load_h5_file("./data/raw_samp/ANTWERP/test_pred/2020-06-07_ANTWERP_8ch.h5")
+pred = load_h5_file("./data/raw_samp/BANGKOK/test_pred/2020-04-29_BANGKOK_8ch.h5")
+pred = load_h5_file("./data/raw_samp/BARCELONA/test_pred/2019-05-13_BARCELONA_8ch.h5")
+pred = load_h5_file("./data/raw_samp/MOSCOW/test_pred/2019-02-22_MOSCOW_8ch.h5")
+
+pred = pred[:, 0, :, :] # next time step pred only
+
+print(f'Data: shape {pred.shape} and type {pred.dtype}')
+
+torch.nonzero(data).shape
+torch.nonzero(pred).shape
 
 ### Plots
 
 plt.title(f'{city} {date} sum all channels')
 plt.imshow(data.sum(axis=(0, -1)))
+
+plt.title(f'{city} {date} sum all channels pred')
+plt.imshow(pred.sum(axis=(0, -1)))
 
 fig_idx = [[0,0], [0,1], [1,0], [1,1]]
 _, ax = plt.subplots(2, 2, figsize=(30, 150))

@@ -34,7 +34,7 @@ def load_h5_file(file_path: Union[str, Path], sl: Optional[slice] = None,
             data = data[:] # Auto. np.ndarray
 
         if to_torch:
-            data = torch.from_numpy(data).to(dtype=torch.float)
+            data = torch.from_numpy(data).to(dtype=torch.float) #torch.uint8
 
         return data
 

@@ -90,11 +90,10 @@ def eval_model(model: torch.nn.Module,
                                       **dataset_config)
 #                    logging.info(f"{data.__len__()=}")
 
-                    sampler = SequentialSampler(data)
                     dataloader = DataLoader(dataset=data,
                                             batch_size=batch_size,
+                                            shuffle=False,
                                             num_workers=num_workers,
-                                            sampler=sampler,
                                             pin_memory=parallel_use,
                                             **dataloader_config)
 
@@ -154,7 +153,7 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use) -> T
 
             X, y = X.to(device, non_blocking=parallel_use), y.to(device, non_blocking=parallel_use)
             X = X / 255
-            y_pred = model(X) # Shape [batch_size, 6*8, 496, 448], Range [0, 1]
+            y_pred = model(X) # Shape [batch_size, 6*8, 496, 448], Range [0, 255]
             loss = loss_fct(y_pred[:, :, 1:, 6:-6], y[:, :, 1:, 6:-6])
 
             loss_sum += float(loss.item())

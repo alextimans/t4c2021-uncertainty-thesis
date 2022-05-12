@@ -14,34 +14,35 @@ from torch.utils.data import DataLoader, SequentialSampler
 from tqdm import tqdm
 
 #from metrics.mse import mse
+from uq.data_augmentation import DataAugmentation
 from data.dataset import T4CDataset
 from util.h5_util import write_data_to_h5
 from model.configs import configs
 from model.checkpointing import save_file_to_folder
-from data.data_layout import CITY_NAMES, MAX_FILE_DAY_IDX, TWO_HOURS
+from data.data_layout import CITY_NAMES, CITY_TRAIN_ONLY, MAX_FILE_DAY_IDX, TWO_HOURS
 
 
-def eval_model(model: torch.nn.Module,
-               batch_size: int,
-               num_workers: int,
-               dataset_config: dict,
-               dataloader_config: dict,
-               model_str: str,
-               model_id: int,
-               save_checkpoint: str,
-               parallel_use: bool,
-               data_raw_path: str,
-               test_pred_path: str,
-               device: str,
-               dataset_limit: Optional[list] = None,
-               **kwargs):
+def eval_model_tta(model: torch.nn.Module,
+                   batch_size: int,
+                   num_workers: int,
+                   dataset_config: dict,
+                   dataloader_config: dict,
+                   model_str: str,
+                   model_id: int,
+                   save_checkpoint: str,
+                   parallel_use: bool,
+                   data_raw_path: str,
+                   test_pred_path: str,
+                   device: str,
+                   dataset_limit: Optional[list] = None,
+                   **kwargs):
 
     logging.info("Running %s..." %(sys._getframe().f_code.co_name)) # Current fct name
 
     model = model.to(device)
     loss_fct = torch.nn.functional.mse_loss
     post_transform = configs[model_str].get("post_transform", None)
-    cities = CITY_NAMES
+    cities = [city for city in CITY_NAMES if city not in CITY_TRAIN_ONLY]
     loss_sum = []
 
     if dataset_limit[0] is not None: # Limit #cities
@@ -56,7 +57,7 @@ def eval_model(model: torch.nn.Module,
         logging.info(f"Test files extracted from {data_raw_path}/{city}/test/...")
 
         if test_pred_path is None:
-            city_pred_path = Path(f"{data_raw_path}/{city}/test_pred")
+            city_pred_path = Path(f"{data_raw_path}/{city}/test_pred_tta")
         else:
             city_pred_path = Path(os.path.join(test_pred_path, city))
         city_pred_path.mkdir(exist_ok=True, parents=True)
@@ -71,7 +72,7 @@ def eval_model(model: torch.nn.Module,
         zip_file_path = city_pred_path / model_pred_name
 
         loss_city = []
-        logging.info(f"Saving predictions on the {nr_files} " +
+        logging.info(f"Saving predictions with TTA on the {nr_files} " +
                      f"files for {city} as '{model_pred_name}'.")
 
         with zipfile.ZipFile(zip_file_path, "w") as zipf:
@@ -90,11 +91,10 @@ def eval_model(model: torch.nn.Module,
                                       **dataset_config)
 #                    logging.info(f"{data.__len__()=}")
 
-                    sampler = SequentialSampler(data)
                     dataloader = DataLoader(dataset=data,
-                                            batch_size=batch_size,
+                                            batch_size=1, # Important to have 1!
+                                            shuffle=False,
                                             num_workers=num_workers,
-                                            sampler=sampler,
                                             pin_memory=parallel_use,
                                             **dataloader_config)
 
@@ -103,11 +103,9 @@ def eval_model(model: torch.nn.Module,
                                                dataloader=dataloader,
                                                model=model,
                                                samp_limit=samp_limit,
-                                               parallel_use=parallel_use)
+                                               parallel_use=parallel_use,
+                                               post_transform=post_transform)
                     loss_city.append(loss_file)
-
-                    if post_transform is not None:
-                        pred = post_transform(pred)
 
 #                    logging.info(f"{pred.shape=}")
                     pred = np.clip(pred, 0, 255) # For uint8
@@ -136,47 +134,42 @@ def eval_model(model: torch.nn.Module,
 
 
 @torch.no_grad()
-def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use) -> Tuple[torch.Tensor, float]:
+def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use,
+             post_transform) -> Tuple[torch.Tensor, float]:
     model.eval()
     loss_sum = 0
 
     bsize = dataloader.batch_size
     batch_limit = min(MAX_FILE_DAY_IDX, samp_limit) // bsize # Only predict for batches up to idx 288
+    data_augmenter = DataAugmentation()
 
-    ds = dataloader.dataset.__getitem__(0)[1].size() # torch.Size([48, 496, 448])
-    pred = torch.empty(size=(batch_limit * bsize, ds[0], ds[1], ds[2]),
-                       dtype=torch.float, device=device)
+    pred = torch.empty(
+        size=(batch_limit * bsize, data_augmenter.nr_augments + 1, 6, 495, 436, 8),
+        dtype=torch.float, device=device) # Shape [288, 1+k, 6, 495, 436, 8]
 
+    # use default batch_size = 1 for dataloader, otherwise dimensions get messed up!
     with tqdm(dataloader) as tloader:
         for batch, (X, y) in enumerate(tloader):
             if batch == batch_limit:
                 break
 
-            """
-            - use batch_size = 1 for dataloader
-            - add a dimension to pred empty tensor for the augmentations
-            - write data augmentation module that receives X = (1, 12*8, 496, 448)
-            and augments it returning X' = (4, 12*8, 496, 448) i.e. 4 augmentations
-            or 3 augmentations and the original X whose predictions can then
-            be used with the ensembling to compute the epistemic uncertainty
-            or more than 4
-            - Predict on augmented data returning y_pred = (4, 6*8, 496, 448)
-            - Disregard loss evaluation etc. since only want to save predictions
-              or evaluate loss using avg. over the augmented predictions
-            - Fill pred with y_pred = (1, 4, 6*8, 496, 448)
-            """
-
             X, y = X.to(device, non_blocking=parallel_use), y.to(device, non_blocking=parallel_use)
-            y_pred = model(X) # Shape: [batch_size, 6*8, 496, 448]
-            loss = loss_fct(y_pred, y)
+
+            X = X / 255
+            X = data_augmenter.transform(X) # Shape [1+k, 12*8, 496, 448], Range [0, 1]
+
+            y_pred = model(X) # Shape [1+k, 6*8, 496, 448], Range [0, 255]
+            loss = loss_fct(y_pred[:, :, 1:, 6:-6], y[:, :, 1:, 6:-6])
+
+            y_pred = data_augmenter.detransform(y_pred) # Shape [1+k, 6*8, 496, 448]
+            y_pred = post_transform(y_pred).unsqueeze(dim=0) # Shape [1, 1+k, 6, 495, 436, 8]
 
             loss_sum += float(loss.item())
             loss_test = float(loss_sum/(batch+1))
             tloader.set_description(f"Batch {batch+1}/{batch_limit} > eval")
             tloader.set_postfix(loss = loss_test)
 
-            # Throws error for last batch if batch_size % 2 != 0
             assert pred[(batch * bsize):(batch * bsize + bsize)].shape == y_pred.shape
-            pred[(batch * bsize):(batch * bsize + bsize)] = y_pred # Fill slice with batch preds
+            pred[(batch * bsize):(batch * bsize + bsize)] = y_pred # Fill slice
 
     return pred, loss_test

@@ -53,12 +53,19 @@ class T4CDataset(Dataset):
             self.file_filter = file_filter
 
         self._load_dataset()
+        self._count_files_per_city_and_year()
 
     def _load_dataset(self):
         if isinstance(self.file_filter, list): # Used in eval.py
             self.files = self.file_filter
         else:
             self.files = sorted(list(Path(self.root_dir).rglob(self.file_filter)))
+        self.files = [str(file) for file in self.files] # Path to str
+
+    def _count_files_per_city_and_year(self):
+        city_and_year = [file.split("/")[-1].split("_")[0].split("-")[0] + file.split("/")[-1].split("_")[-2] for file in self.files]
+        assert len(self.files) > 0 and len(self.files) == len(city_and_year)
+        self.count = int(len(self.files) / len(np.unique(city_and_year)))
 
     def _load_h5_file(self, file_path, sl: Optional[slice], to_torch: bool = True):
         return load_h5_file(file_path, sl, to_torch)
@@ -74,17 +81,16 @@ class T4CDataset(Dataset):
         if idx > self.__len__():
             raise IndexError(f"Sample {idx=} out of bounds for len {self.__len__()}.")
 
-        file_idx = idx // MAX_FILE_DAY_IDX # Div and floor to int
-        start_hour = idx % MAX_FILE_DAY_IDX # Modulo
+        file_idx = idx // MAX_FILE_DAY_IDX
+        start_hour = idx % MAX_FILE_DAY_IDX
 
-        nr_files = len(self.files)
-        if (file_idx >= nr_files): # Last file case idx 288 (is this ever met?)
-            file_idx = nr_files - 1
+        if file_idx == len(self.files): # Very last file idx 288
+            file_idx -= 1
             start_hour = MAX_ONE_DAY_SMP_IDX
-        elif (file_idx + 1 >= nr_files and start_hour > MAX_ONE_DAY_SMP_IDX): # Idx 264-287
+        elif (file_idx + 1) % self.count == 0 and start_hour > MAX_ONE_DAY_SMP_IDX: # Last file per city idx 264-287
             start_hour = MAX_ONE_DAY_SMP_IDX # Replicate last full sample 22-24h
 
-        if (start_hour > MAX_ONE_DAY_SMP_IDX): # Two hours stretch across two h5 files
+        if start_hour > MAX_ONE_DAY_SMP_IDX: # Two hours stretch across two h5 files
             slots_1st_day = MAX_FILE_DAY_IDX - start_hour
             slots_2nd_day = TWO_HOURS - slots_1st_day
 
@@ -138,25 +144,25 @@ def data_split_xy(data, offset: int = 0) -> Tuple[torch.Tensor, torch.Tensor]:
 
 """
 def test(idx):
-    files = ["file1", "file2", "file3"]
+    files = ["file1_city1", "file2_city1", "file3_city1", "file1_city2", "file2_city2", "file3_city2"]
     MAX_FILE_DAY_IDX = 288
     MAX_ONE_DAY_SMP_IDX = 264
     TWO_HOURS = 24
 
-    if idx > (len(files)*MAX_FILE_DAY_IDX):
+    if idx > (len(files) * MAX_FILE_DAY_IDX):
         raise IndexError(f"Sample index {idx} out of bounds.")
 
     file_idx = idx // MAX_FILE_DAY_IDX # Div and floor to int
     start_hour = idx % MAX_FILE_DAY_IDX # Modulo
-    
+
+    nr_files_per_city = 3 # i.e. self.count
+
     if (file_idx == len(files)): # Last file case idx 288
         print("Last index")
         file_idx -= 1
-        start_hour = MAX_ONE_DAY_SMP_IDX # Replicate last full sample 22-24h
-    elif (file_idx + 1 == len(files) and start_hour > MAX_ONE_DAY_SMP_IDX): # Idx 264-287
         start_hour = MAX_ONE_DAY_SMP_IDX
-    else:
-        pass
+    elif ((file_idx + 1) % nr_files_per_city == 0 and start_hour > MAX_ONE_DAY_SMP_IDX): # Idx 264-287
+        start_hour = MAX_ONE_DAY_SMP_IDX
     
     if (start_hour > MAX_ONE_DAY_SMP_IDX): # Two hours stretch across two h5 files
         slots_1st_day = MAX_FILE_DAY_IDX - start_hour
@@ -166,7 +172,7 @@ def test(idx):
         sl_2nd_day = slice(0, slots_2nd_day) # Y x 5m slots s.t. X + Y = 24
     
         print(f"1st day // File: {files[file_idx]}, slice: {sl_1st_day}")
-        print(f"1st day // File: {files[file_idx+1]}, slice: {sl_2nd_day}")
+        print(f"2nd day // File: {files[file_idx+1]}, slice: {sl_2nd_day}")
     
     else: # Two hours stretch across one h5 file
         sl = slice(start_hour, start_hour + TWO_HOURS) # 24 x 5m slots

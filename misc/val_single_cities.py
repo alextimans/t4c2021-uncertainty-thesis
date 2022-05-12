@@ -7,14 +7,15 @@ from typing import Tuple
 
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+from torch.utils.data import DataLoader, SequentialSampler
 from tqdm import tqdm
 
-from model.early_stopping import EarlyStopping
 from model.checkpointing import load_torch_opt_from_checkpoint
-from model.checkpointing import save_torch_model_to_checkpoint
 from model.checkpointing import save_file_to_folder
 from data.dataset import T4CDataset
+
+from data.data_layout import CITY_VAL_TEST_ONLY, CITY_TRAIN_VAL_TEST
+
 from util.monitoring import system_status
 
 
@@ -24,6 +25,7 @@ def run_model(model: torch.nn.Module,
               batch_size: int,
               num_workers: int,
               epochs: int,
+              dataset_config: dict,
               dataloader_config: dict,
               optimizer_config: dict,
               lr_scheduler_config: dict,
@@ -35,24 +37,11 @@ def run_model(model: torch.nn.Module,
               parallel_use: bool,
               display_system_status: bool,
               device: str,
+              val_data_limit: int,
+              data_raw_path: str,
               **kwargs) -> Tuple[torch.nn.Module, str]:
 
     logging.info("Running %s..." %(sys._getframe().f_code.co_name)) # Current fct name
-
-    # Load data
-    train_loader = DataLoader(dataset=data_train,
-                              batch_size=batch_size,
-                              shuffle=True,
-                              num_workers=num_workers,
-                              pin_memory=parallel_use,
-                              **dataloader_config)
-    val_loader = DataLoader(dataset=data_val,
-                            batch_size=batch_size,
-                            shuffle=False,
-                            num_workers=num_workers,
-                            pin_memory=parallel_use,
-                            **dataloader_config)
-    logging.info(f"Created data loaders with {batch_size=}.")
 
     # Model
     model = model.to(device, non_blocking=parallel_use)
@@ -60,49 +49,79 @@ def run_model(model: torch.nn.Module,
     loss_fct = torch.nn.functional.mse_loss #torch.nn.MSELoss()
     # Optimizer
     optimizer = optim.Adam(model.parameters(), **optimizer_config)
-    # LR Scheduler
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, **lr_scheduler_config)
-    # Early Stopping
-    early_stopping = EarlyStopping(**earlystop_config)
     # Load last training state
     if resume_checkpoint is not None:
         last_epoch, last_loss = load_torch_opt_from_checkpoint(resume_checkpoint,
                                                                optimizer, device)
     else:
         last_epoch, last_loss = -1, None
-    # Training
-    loss_train, loss_val = train_model(device, epochs, optimizer, loss_fct,
-                                       train_loader, val_loader, model, model_str,
-                                       model_id, save_checkpoint, early_stopping,
-                                       lr_scheduler, display_system_status, parallel_use,
-                                       last_epoch, last_loss)
-    logging.info("Finished training of model %s on %s for %s epochs.",
-                 model_str, device, epochs)
-    logging.info("Final loss '{}' -> Train: {:.4f}, Val: {:.4f}"
-                 .format(loss_fct.__name__, loss_train[-1], loss_val[-1]))
+
+    path_checkpt = os.path.join(save_checkpoint, f"{model_str}_{model_id}_val_by_city")
+    l_val = [] # Loss per city
+
+    for city in CITY_VAL_TEST_ONLY + CITY_TRAIN_VAL_TEST:
+
+        data_val = T4CDataset(root_dir=data_raw_path,
+                              file_filter=f"{city}/val/*8ch.h5",
+                              dataset_limit=val_data_limit,
+                              **dataset_config)
+
+        val_sampler = SequentialSampler(data_val)
+        val_loader = DataLoader(dataset=data_val,
+                                batch_size=batch_size,
+                                num_workers=num_workers,
+                                sampler=val_sampler,
+                                pin_memory=parallel_use,
+                                **dataloader_config)
+
+        loss_val, l_v = _val_epoch(device, city, loss_fct, val_loader, model, parallel_use)
+        l_val.append(loss_val)
+        save_file_to_folder(file=l_v, filename=f"loss_v_bybatch_{city}", folder_dir=path_checkpt,
+                            fmt="%.4f", header=f"val loss by batch for {model_str}_{model_id} for {city=}")
+
+        logging.info("City: {}, Val loss: {:.4f}".format(city, loss_val))
+        if eval(display_system_status) is not False:
+            logging.info(system_status()) # Visualize GPU, memory, disk usage
+
+    comment = f"loss by city for {model_str}_{model_id}"
+    save_file_to_folder(file=l_val, filename="loss_val_by_city", folder_dir=path_checkpt,
+                        fmt="%.4f", header="val " + comment)
 
     return model
 
-
+"""
 def train_model(device, epochs, optimizer, loss_fct, train_loader, val_loader,
                 model, model_str, model_id, save_checkpoint, early_stopping,
                 lr_scheduler, display_system_status, parallel_use,
-                last_epoch, last_loss) -> Tuple[list, list]:
+                last_epoch, last_loss, dataset_config) -> Tuple[list, list]:
 
     path_checkpt = os.path.join(save_checkpoint, f"{model_str}_{model_id}")
     next_epoch = last_epoch + 1
-    l_train, l_val = [], [] # Loss per epoch
+    l_train, l_val = [], [] # Loss per city
 
-    for epoch in range(next_epoch, next_epoch + epochs):
+    for city in CITY_VAL_TEST_ONLY + CITY_TRAIN_VAL_TEST:
 
-        loss_train, l_t = _train_epoch(device, epoch, optimizer, loss_fct, train_loader, model, parallel_use)
-        loss_val, l_v = _val_epoch(device, epoch, loss_fct, val_loader, model, parallel_use)
+        data_val = T4CDataset(root_dir="./data/raw",
+                              file_filter=f"{city}/val/*8ch.h5",
+                              dataset_type="val",
+                              dataset_limit=4,
+                              **dataset_config)
+        val_sampler = SequentialSampler(data_val)
+        val_loader = DataLoader(dataset=data_val,
+                                batch_size=batch_size,
+                                num_workers=num_workers,
+                                sampler=val_sampler,
+                                pin_memory=parallel_use,
+                                **dataloader_config)
 
-        l_train.append(loss_train)
+        #loss_train, l_t = _train_epoch(device, epoch, optimizer, loss_fct, train_loader, model, parallel_use)
+        loss_val, l_v = _val_epoch(device, city, loss_fct, val_loader, model, parallel_use)
+
+        #l_train.append(loss_train)
         l_val.append(loss_val)
 
-        save_file_to_folder(file=l_t, filename=f"loss_t_bybatch_{epoch}", folder_dir=path_checkpt,
-                            fmt="%.4f", header=f"train loss by batch for {model_str}_{model_id} for {epoch=}")
+        #save_file_to_folder(file=l_t, filename=f"loss_t_bybatch_{epoch}", folder_dir=path_checkpt,
+        #                    fmt="%.4f", header=f"train loss by batch for {model_str}_{model_id} for {epoch=}")
         save_file_to_folder(file=l_v, filename=f"loss_v_bybatch_{epoch}", folder_dir=path_checkpt,
                             fmt="%.4f", header=f"val loss by batch for {model_str}_{model_id} for {epoch=}")
 
@@ -153,10 +172,10 @@ def _train_epoch(device, epoch, optimizer, loss_fct, dataloader, model, parallel
             tepoch.set_postfix(loss = loss_train)
 
     return loss_train, l_t
-
+"""
 
 @torch.no_grad()
-def _val_epoch(device, epoch, loss_fct, dataloader, model, parallel_use) -> Tuple[float, list]:
+def _val_epoch(device, city, loss_fct, dataloader, model, parallel_use) -> Tuple[float, list]:
     model.eval()
     loss_sum = 0
     l_v = [] # Loss per batch
@@ -171,7 +190,7 @@ def _val_epoch(device, epoch, loss_fct, dataloader, model, parallel_use) -> Tupl
             l_v.append(float(loss.item()))
             loss_sum += float(loss.item())
             loss_val = float(loss_sum/(batch+1))
-            tepoch.set_description(f"Epoch {epoch} > val")
+            tepoch.set_description(f"City {city} > val")
             tepoch.set_postfix(loss = loss_val)
 
     return loss_val, l_v
