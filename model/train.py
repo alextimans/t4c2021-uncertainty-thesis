@@ -7,7 +7,7 @@ from typing import Tuple
 
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from model.early_stopping import EarlyStopping
@@ -54,22 +54,19 @@ def run_model(model: torch.nn.Module,
                             **dataloader_config)
     logging.info(f"Created data loaders with {batch_size=}.")
 
-    # Model
+    # Model logic
     model = model.to(device, non_blocking=parallel_use)
-    # Loss function
     loss_fct = torch.nn.functional.mse_loss #torch.nn.MSELoss()
-    # Optimizer
     optimizer = optim.Adam(model.parameters(), **optimizer_config)
-    # LR Scheduler
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, **lr_scheduler_config)
-    # Early Stopping
     early_stopping = EarlyStopping(**earlystop_config)
+
     # Load last training state
     if resume_checkpoint is not None:
-        last_epoch, last_loss = load_torch_opt_from_checkpoint(resume_checkpoint,
-                                                               optimizer, device)
+        last_epoch, last_loss = load_torch_opt_from_checkpoint(resume_checkpoint, optimizer, device)
     else:
         last_epoch, last_loss = -1, None
+
     # Training
     loss_train, loss_val = train_model(device, epochs, optimizer, loss_fct,
                                        train_loader, val_loader, model, model_str,

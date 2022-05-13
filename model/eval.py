@@ -10,7 +10,7 @@ import zipfile
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, SequentialSampler
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 #from metrics.mse import mse

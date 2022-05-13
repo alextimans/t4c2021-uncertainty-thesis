@@ -82,7 +82,7 @@ def write_data_to_h5(data: Union[np.ndarray, torch.Tensor],
         file.create_dataset("array",
                             data=data, # Infers shape and dtype
                             dtype=dtype,
-                            chunks=(1, *data.shape[1:]), # Optimize for row access!
+                            chunks=(1, *data.shape[1:]), # Optimize for row access
                             compression=compression,
                             compression_opts=compression_level)
 

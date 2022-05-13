@@ -28,10 +28,10 @@ class T4CDataset(Dataset):
             Data root folder, by convention should be './data/raw'. 
             All '**/*8ch.h5' files will be added unless filtered.
         file_filter: str or list
-            Filter files under 'root_dir' for specific files e.g. city.
+            Filter files under 'root_dir' for specific files e.g. by city.
             Caution: doesn't discriminate dataset_type, relies on correct path.
             Defaults to '**/*ch8.h5' i.e. no filtering.
-            Is str when specifying correct filtering str (regex-style).
+            Is str when specifying correct path (regex-style) e.g. 'BARCELONA/train/*8ch.h5'.
             Is list when passing list of file paths directly. 
         dataset_type: str
             One of ['train', 'val', 'test'].

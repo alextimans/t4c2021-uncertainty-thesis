@@ -10,7 +10,7 @@ import zipfile
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, SequentialSampler
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 #from metrics.mse import mse
@@ -89,7 +89,6 @@ def eval_model_tta(model: torch.nn.Module,
                                       file_filter=file_filter,
                                       dataset_limit=samp_limit + TWO_HOURS, # Limit #samples per file
                                       **dataset_config)
-#                    logging.info(f"{data.__len__()=}")
 
                     dataloader = DataLoader(dataset=data,
                                             batch_size=1, # Important to have 1!
@@ -107,7 +106,6 @@ def eval_model_tta(model: torch.nn.Module,
                                                post_transform=post_transform)
                     loss_city.append(loss_file)
 
-#                    logging.info(f"{pred.shape=}")
                     pred = np.clip(pred, 0, 255) # For uint8
                     temp_h5 = os.path.join(tmpdir, f"pred_{city}_samp{idx}")
                     write_data_to_h5(data=pred, dtype=np.uint8,
@@ -116,10 +114,8 @@ def eval_model_tta(model: torch.nn.Module,
 
                     arcname = str(file_filter[0]).split("/")[-1] # e.g. '2019-06-04_ANTWERP_8ch.h5'
                     zipf.write(filename=temp_h5, arcname=arcname)
-#                    logging.info(f"Added file as {arcname} to .zip.")
 
         logging.info(f"Written all {nr_files} pred files for {city} to .zip.")
-#       logging.info(zipf.namelist())
         zipf_mb_size = os.path.getsize(zip_file_path) / (1024 * 1024)
         logging.info(f"Zip file '{zip_file_path}' of size {zipf_mb_size:.1f} MB.")
 

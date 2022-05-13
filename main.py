@@ -39,7 +39,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--batch_size", type=int, default=4, required=False,
                         help="Batch size for train, val and test data loaders. Preferably batch_size mod 2 = 0.")
-    parser.add_argument("--epochs", type=int, default=10, required=False,
+    parser.add_argument("--epochs", type=int, default=2, required=False,
                         help="Number of epochs to train.")
 
     parser.add_argument("--data_limit", type=int, default=None, required=False,
@@ -66,7 +66,7 @@ def create_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--loglevel", type=str, default="info", required=False,
                         help="Provide logging level. Ex.: --loglevel debug, default=warning.")
-    parser.add_argument("--random_seed", type=int, default=22, required=False,
+    parser.add_argument("--random_seed", type=int, default=1234567, required=False,
                         help="Set manual random seed.")
     parser.add_argument("--display_model", type=str, default="False", required=False, choices=["True", "False"],
                         help="'Boolean' to display model architecture in CLI.")
