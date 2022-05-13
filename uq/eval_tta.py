@@ -159,7 +159,7 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use,
             X = data_augmenter.transform(X) # Shape [1+k, 12*8, 496, 448], Range [0, 1]
 
             y_pred = model(X) # Shape [1+k, 6*8, 496, 448], Range [0, 255]
-            loss = loss_fct(y_pred[:, :, 1:, 6:-6], y[:, :, 1:, 6:-6])
+            loss = loss_fct(y_pred[0, :, 1:, 6:-6], y[:, :, 1:, 6:-6])
 
             y_pred = data_augmenter.detransform(y_pred) # Shape [1+k, 6*8, 496, 448]
             y_pred = post_transform(y_pred).unsqueeze(dim=0) # Shape [1, 1+k, 6, 495, 436, 8]
