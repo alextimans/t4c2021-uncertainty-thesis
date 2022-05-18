@@ -108,8 +108,7 @@ def eval_model(model: torch.nn.Module,
                     if post_transform is not None:
                         pred = post_transform(pred)
 
-#                    logging.info(f"{pred.shape=}")
-                    pred = torch.clamp(pred, 0, 255) # For uint8
+#                    logging.info(f"{pred.shape=}") # Shape [samples, 6, 495, 436, 8]
                     temp_h5 = os.path.join(tmpdir, f"pred_{city}_samp{idx}")
                     write_data_to_h5(data=pred, dtype=np.uint8,
                                      filename=temp_h5, compression="lzf")
@@ -144,7 +143,7 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use) -> T
 
     ds = dataloader.dataset.__getitem__(0)[1].size() # torch.Size([48, 496, 448])
     pred = torch.empty(size=(batch_limit * bsize, ds[0], ds[1], ds[2]),
-                       dtype=torch.float, device=device)
+                       dtype=torch.uint8, device=device)
 
     with tqdm(dataloader) as tloader:
         for batch, (X, y) in enumerate(tloader):
@@ -155,6 +154,7 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use) -> T
             X = X / 255
             y_pred = model(X) # Shape [batch_size, 6*8, 496, 448], Range [0, 255]
             loss = loss_fct(y_pred[:, :, 1:, 6:-6], y[:, :, 1:, 6:-6])
+            y_pred = torch.clamp(y_pred, 0, 255)
 
             loss_sum += float(loss.item())
             loss_test = float(loss_sum/(batch+1))

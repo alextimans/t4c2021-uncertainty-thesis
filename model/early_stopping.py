@@ -66,7 +66,7 @@ class EarlyStopping:
 
         elif (loss >= self.best_loss - self.delta): # No improvement in val loss
             self.counter += 1
-            logging.info(f"EarlyStopping being patient: {self.counter}/{self.patience}.")
+            logging.info(f"EarlyStopping being patient: {self.counter}/{self.patience+1}.")
 
             if (self.counter > self.patience): # Init early stopping
                 self.early_stop = True

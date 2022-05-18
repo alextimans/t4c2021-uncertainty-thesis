@@ -111,12 +111,12 @@ def train_model(device, epochs, optimizer, loss_fct, train_loader, val_loader,
         lr_scheduler.step(loss_val)
 
         save_to_checkpt = early_stopping(model, loss_val, last_loss)
-        if early_stopping.early_stop:
-            logging.info(f"Early stopping at {epoch=}.")
-            break
         if save_to_checkpt:
             save_torch_model_to_checkpoint(model, optimizer, model_str=model_str, epoch=epoch,
                                            loss=loss_val, save_checkpoint=path_checkpt)
+        if early_stopping.early_stop:
+            logging.info(f"Early stopping at {epoch=}.")
+            break
 
     comment = f"loss by epoch for {model_str}_{model_id} for epochs {next_epoch} to {epoch}"
     save_file_to_folder(file=l_train, filename=f"loss_train_ep{next_epoch}_{epoch}", folder_dir=path_checkpt,

@@ -1,24 +1,30 @@
 from functools import partial
 
 import torch
+import torchvision.transforms as tf
 import torchvision.transforms.functional as TF
+
 
 class DataAugmentation:
     def __init__(self):
         self.transformations = [
             TF.vflip,
             TF.hflip,
-            partial(TF.rotate, angle=90),
-            partial(TF.rotate, angle=180),
-            partial(TF.rotate, angle=270)
+            partial(TF.rotate, angle=90, expand=True),
+            partial(TF.rotate, angle=180, expand=True),
+            partial(TF.rotate, angle=270, expand=True),
+            tf.Compose([TF.vflip, partial(TF.rotate, angle=90, expand=True)]),
+            tf.Compose([TF.vflip, partial(TF.rotate, angle=-90, expand=True)])
             ]
 
         self.detransformations = [
             TF.vflip,
             TF.hflip,
-            partial(TF.rotate, angle=-90),
-            partial(TF.rotate, angle=-180),
-            partial(TF.rotate, angle=-270)
+            partial(TF.rotate, angle=-90, expand=True),
+            partial(TF.rotate, angle=-180, expand=True),
+            partial(TF.rotate, angle=-270, expand=True),
+            tf.Compose([partial(TF.rotate, angle=-90, expand=True), TF.vflip]),
+            tf.Compose([partial(TF.rotate, angle=90, expand=True), TF.vflip])
             ]
 
         self.nr_augments = len(self.transformations)
@@ -42,7 +48,7 @@ class DataAugmentation:
     def detransform(self, data: torch.Tensor) -> torch.Tensor:
 
         """
-        receives y_pred = (1+k, 6*8, 496, 448), detransforms the 
+        Receives y_pred = (1+k, 6*8, 496, 448), detransforms the 
         k augmentations and returns y_pred = (1+k, 6*8, 496, 448)
         """
 

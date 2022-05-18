@@ -48,7 +48,7 @@ configs = {
             },
 
         "lr_scheduler_config": {
-            "patience": 0, # effect after epoch patience+1 without improvement
+            "patience": 2, # effect after epoch patience+1 without improvement
             "mode": "min",
             "factor": 0.1,
             "threshold": 1e-4,
@@ -58,7 +58,7 @@ configs = {
             },
 
         "earlystop_config": {
-            "patience": 1, # effect after epoch patience+1 without improvement
+            "patience": 3, # effect after epoch patience+1 without improvement
             "delta": 1e-4,
             "save_each_epoch": True,
             "loss_improve": "min",

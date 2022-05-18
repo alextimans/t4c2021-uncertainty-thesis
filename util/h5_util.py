@@ -10,7 +10,7 @@ import torch
 
 
 def load_h5_file(file_path: Union[str, Path], sl: Optional[slice] = None,
-                 to_torch: bool = True) -> Union[np.ndarray, torch.Tensor]:
+                 to_torch: bool = True, dtype = None) -> Union[np.ndarray, torch.Tensor]:
 
     """
     Given a file path to an h5 file assumed to house a tensor, load that
@@ -22,6 +22,10 @@ def load_h5_file(file_path: Union[str, Path], sl: Optional[slice] = None,
         h5 file to load.
     sl: Optional[slice]
         Slice to load (data is written in chunks for faster access to rows).
+    to_torch: bool
+        Transform loaded numpy array into torch tensor
+    dtype
+        Set the specific dtype of the transformed torch tensor
     """
 
     file_path = str(file_path) if isinstance(file_path, Path) else file_path
@@ -34,7 +38,10 @@ def load_h5_file(file_path: Union[str, Path], sl: Optional[slice] = None,
             data = data[:] # Auto. np.ndarray
 
         if to_torch:
-            data = torch.from_numpy(data).to(dtype=torch.float) #torch.uint8
+            if dtype is not None:
+                data = torch.from_numpy(data).to(dtype=dtype) # e.g. torch.uint8
+            else:
+                data = torch.from_numpy(data).to(dtype=torch.float)
 
         return data
 
@@ -81,7 +88,7 @@ def write_data_to_h5(data: Union[np.ndarray, torch.Tensor],
         # https://www.oreilly.com/library/view/python-and-hdf5/9781491944981/ch04.html
         file.create_dataset("array",
                             data=data, # Infers shape and dtype
-                            dtype=dtype,
+                            dtype=dtype, # If explicitly given overrides inferred dtype
                             chunks=(1, *data.shape[1:]), # Optimize for row access
                             compression=compression,
                             compression_opts=compression_level)

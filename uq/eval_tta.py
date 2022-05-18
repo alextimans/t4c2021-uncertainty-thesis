@@ -106,7 +106,6 @@ def eval_model_tta(model: torch.nn.Module,
                                                post_transform=post_transform)
                     loss_city.append(loss_file)
 
-                    pred = np.clip(pred, 0, 255) # For uint8
                     temp_h5 = os.path.join(tmpdir, f"pred_{city}_samp{idx}")
                     write_data_to_h5(data=pred, dtype=np.uint8,
                                      filename=temp_h5, compression="lzf")
@@ -140,8 +139,8 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use,
     data_augmenter = DataAugmentation()
 
     pred = torch.empty(
-        size=(batch_limit * bsize, data_augmenter.nr_augments + 1, 6, 495, 436, 8),
-        dtype=torch.float, device=device) # Shape [288, 1+k, 6, 495, 436, 8]
+        size=(batch_limit * bsize, 1 + data_augmenter.nr_augments, 6, 495, 436, 8),
+        dtype=torch.uint8, device=device) # Shape [288, 1+k, 6, 495, 436, 8]
 
     # use default batch_size = 1 for dataloader, otherwise dimensions get messed up!
     with tqdm(dataloader) as tloader:
@@ -155,10 +154,11 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use,
             X = data_augmenter.transform(X) # Shape [1+k, 12*8, 496, 448], Range [0, 1]
 
             y_pred = model(X) # Shape [1+k, 6*8, 496, 448], Range [0, 255]
-            loss = loss_fct(y_pred[0, :, 1:, 6:-6], y[:, :, 1:, 6:-6])
+            loss = loss_fct(y_pred[0, :, 1:, 6:-6], y[:, :, 1:, 6:-6]) # For original img
 
             y_pred = data_augmenter.detransform(y_pred) # Shape [1+k, 6*8, 496, 448]
             y_pred = post_transform(y_pred).unsqueeze(dim=0) # Shape [1, 1+k, 6, 495, 436, 8]
+            y_pred = torch.clamp(y_pred, 0, 255) # For uint8
 
             loss_sum += float(loss.item())
             loss_test = float(loss_sum/(batch+1))
