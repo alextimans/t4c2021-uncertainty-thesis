@@ -179,7 +179,8 @@ class UNetTransformer:
         - stack time and channels into one dimension
         - zeropad2d data to ensure same input and output sizes for UNet
         since rounding errors for uneven dimensions occur;
-        pad input with zeroes s.t. [495, 436] -> [496, 448]
+        pad input with zeroes s.t. (H, W) -> (H + pad, W + pad)
+            original: (495, 436) -> (496, 448)
     
     unet_post_transform:
         - unstack time and channel dimensions
@@ -198,7 +199,7 @@ class UNetTransformer:
         if from_numpy:
             data = torch.from_numpy(data).to(dtype=torch.float)
 
-        if not batch_dim: # e.g. (12, 495, 436, 8) -> (1, 12, 495, 436, 8)
+        if not batch_dim: # e.g. (12, H, W, Ch) -> (1, 12, H, W, Ch)
             data = torch.unsqueeze(data, dim=0)
 
         if stack_channels_on_time:
@@ -208,7 +209,7 @@ class UNetTransformer:
             zeropad2d = torch.nn.ZeroPad2d(zeropad2d)
             data = zeropad2d(data)
 
-        if not batch_dim: # e.g. (1, 12, 495, 436, 8) -> (12, 495, 436, 8)
+        if not batch_dim: # e.g. (1, 12, H, W, Ch) -> (12, H, W, Ch)
             data = torch.squeeze(data, dim=0)
 
         return data
@@ -244,15 +245,15 @@ class UNetTransformer:
         
         """
         Combine time and channel dimensions:
-        e.g. (k, 12, 495, 436, 8) -> (k, 12 * 8, 495, 436)
+        e.g. (k, 12, H, W, Ch) -> (k, 12 * Ch, H, W)
         """
 
         batch, time_steps, height, width, channels = data.shape
 
-        # (k, 12, 495, 436, 8) -> (k, 12, 8, 495, 436)
+        # (k, 12, H, W, Ch) -> (k, 12, Ch, H, W)
         data = torch.movedim(data, 4, 2) #torch.moveaxis
 
-        # (k, 12, 8, 495, 436) -> (k, 12 * 8, 495, 436)
+        # (k, 12, Ch, H, W) -> (k, 12 * Ch, H, W)
         data = torch.reshape(data, (batch, time_steps * channels, height, width))
 
         return data
@@ -262,18 +263,18 @@ class UNetTransformer:
                                            channels: int = 8) -> torch.Tensor:
 
         """
-        Uncombinbe time and channel dimensions:
-        e.g. (k, 12 * 8, 495, 436) -> (k, 12, 495, 436, 8)
+        Uncombine time and channel dimensions:
+        e.g. (k, 12 * Ch, H, W) -> (k, 12, H, W, Ch)
         """
 
         batch, stacked, height, width = data.shape
 
         time_steps = int(stacked / channels)
 
-        # (k, 12 * 8, 495, 436) -> (k, 12, 8, 495, 436)
+        # (k, 12 * Ch, H, W) -> (k, 12, Ch, H, W)
         data = torch.reshape(data, (batch, time_steps, channels, height, width))
 
-        # (k, 12, 8, 495, 436) -> (k, 12, 495, 436, 8)
+        # (k, 12, Ch, H, W) -> (k, 12, H, W, Ch)
         data = torch.movedim(data, 2, 4) #torch.moveaxis
 
         return data

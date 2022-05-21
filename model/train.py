@@ -135,8 +135,8 @@ def _train_epoch(device, epoch, optimizer, loss_fct, dataloader, model, parallel
     with tqdm(dataloader) as tepoch:
         for batch, (X, y) in enumerate(tepoch):
             X, y = X.to(device, non_blocking=parallel_use), y.to(device, non_blocking=parallel_use)
-            X = X / 255 # Range [0, 1]
-            y_pred = model(X) # Shape [batch_size, 6*8, 496, 448], Range [0, 255]
+            X = X / 255 # in [0, 1]
+            y_pred = model(X) # (batch, 6 * Ch, 496, 448) in [0, 255]
             loss = loss_fct(y_pred[:, :, 1:, 6:-6], y[:, :, 1:, 6:-6]) # Mean over batch samples + channels + pixels
 
             optimizer.zero_grad()

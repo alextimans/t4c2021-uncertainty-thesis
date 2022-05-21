@@ -19,6 +19,8 @@ from util.logging import t4c_apply_basic_logging_config
 from util.get_device import get_device
 from util.set_seed import set_seed
 
+from uq.eval_tta import eval_model_tta, eval_calib_tta
+
 
 def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Parser for CLI arguments to run model.",
@@ -81,6 +83,11 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--test_pred_path", type=str, default=None, required=False,
                         help="Specific directory to store test set model predictions in.")
 
+    parser.add_argument("--calibration", type=str, default=None, required=False, choices=["True", "False"],
+                        help="Specify if should run calibration script to obtain quantiles for prediction intervals.")
+    parser.add_argument("--uq_method", type=str, default=None, required=False, choices=["tta"],
+                        help="Specify UQ method for test set and/or calibration set evaluation.")
+
     return parser
 
 
@@ -93,6 +100,7 @@ def main():
     - Model creation (optional: checkpoint reloading)
     - Device setting
     - Call on model training
+    - Call on calibration set script
     - Call on model test set evaluation
     """
 
@@ -122,6 +130,9 @@ def main():
     data_raw_path = args.data_raw_path
     train_file_filter = args.train_file_filter
     val_file_filter = args.val_file_filter
+
+    calibration = args.calibration
+    uq_method = args.uq_method
 
     model_class = configs[model_str]["model_class"]
     model_config = configs[model_str]["model_config"]
@@ -193,18 +204,46 @@ def main():
                           **(vars(args)))
         logging.info("Model trained.")
     else:
+        del data_train, data_val
         logging.info("Model training not called.")
+
+    # Obtain calibration set quantiles for prediction intervals
+    if eval(calibration) is not False:
+        logging.info("Running calibration script...")
+        if uq_method == "tta":
+            eval_calib_tta(model=model,
+                           dataset_config=dataset_config,
+                           dataloader_config=dataloader_config,
+                           device=device,
+                           parallel_use=parallel_use,
+                           calibration_size = 500,
+                           alpha = 0.1, # 90% PIs
+                           city_limit = test_data_limit[0],
+                           to_file = True,
+                           **(vars(args)))
+        logging.info("Calibration script finished..")
 
     # Test set evaluation
     if eval(model_evaluation) is not False:
         logging.info("Evaluating model on test set...")
-        eval_model(model=model,
-                   dataset_limit=test_data_limit,
-                   dataset_config=dataset_config,
-                   dataloader_config=dataloader_config,
-                   device=device,
-                   parallel_use=parallel_use,
-                   **(vars(args)))
+        if uq_method == "tta":
+            logging.info("Evaluating uncertainty using TTA...")
+            eval_model_tta(model=model,
+                           dataset_limit=test_data_limit,
+                           dataset_config=dataset_config,
+                           dataloader_config=dataloader_config,
+                           device=device,
+                           parallel_use=parallel_use,
+                           **(vars(args)))
+        else:
+            logging.info("No UQ method given, point-wise predictions only.")
+            eval_model(model=model,
+                       dataset_limit=test_data_limit,
+                       dataset_config=dataset_config,
+                       dataloader_config=dataloader_config,
+                       device=device,
+                       parallel_use=parallel_use,
+                       **(vars(args)))
         logging.info("Model evaluated.")
     else:
         logging.info("Model test set evaluation not called.")

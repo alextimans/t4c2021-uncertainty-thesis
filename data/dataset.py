@@ -56,7 +56,7 @@ class T4CDataset(Dataset):
         self._count_files_per_city_and_year()
 
     def _load_dataset(self):
-        if isinstance(self.file_filter, list): # Used in eval.py
+        if isinstance(self.file_filter, list): # Used in eval scripts
             self.files = self.file_filter
         else:
             self.files = sorted(list(Path(self.root_dir).rglob(self.file_filter)))
@@ -125,14 +125,14 @@ def data_split_xy(data, offset: int = 0) -> Tuple[torch.Tensor, torch.Tensor]:
 
     Parameters
     ----------
-    data: Data, tensor of shape (24, 495, 436, 8).
+    data: Data, tensor of shape (24, H, W, Ch).
     offset: int
         Extra offsetting of sample.
 
     Returns
     -------
-        X: Input, tensor of shape (12, 495, 436, 8).
-        y: Label, tensor of shape (6, 495, 436, 8).
+        X: Input, tensor of shape (12, H, W, Ch).
+        y: Label, tensor of shape (6, H, W, Ch).
     """
 
     X = data[offset:(offset + 12)]

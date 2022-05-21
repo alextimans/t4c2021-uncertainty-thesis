@@ -32,8 +32,8 @@ class DataAugmentation:
     def transform(self, data: torch.Tensor) -> torch.Tensor:
 
         """
-        Receives X = (1, 12*8, 496, 448) and does k augmentations 
-        returning X' = (1+k, 12*8, 496, 448)
+        Receives X = (1, 12 * Ch, H, W) and does k augmentations 
+        returning X' = (1+k, 12 * Ch, H, W).
         """
 
         X = data
@@ -41,15 +41,15 @@ class DataAugmentation:
             X_aug = transform(data)
             X = torch.cat((X, X_aug), dim=0)
 
-        assert list(X.shape) == [self.nr_augments+1] + list(data.shape[1:])
+        assert list(X.shape) == [1+self.nr_augments] + list(data.shape[1:])
 
         return X
 
     def detransform(self, data: torch.Tensor) -> torch.Tensor:
 
         """
-        Receives y_pred = (1+k, 6*8, 496, 448), detransforms the 
-        k augmentations and returns y_pred = (1+k, 6*8, 496, 448)
+        Receives y_pred = (1+k, 6 * Ch, H, W), detransforms the 
+        k augmentations and returns y_pred = (1+k, 6 * Ch, H, W).
         """
 
         y = data[0, ...].unsqueeze(dim=0)

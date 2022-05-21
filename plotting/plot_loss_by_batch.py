@@ -41,6 +41,8 @@ def plot_loss_by_batch(loss_path: str, epoch_count: int,
     ax1.axvline(x=ep1, color="black", ls="--")
     x_text, y_text = ep1 + ep1*0.05, ax1.get_ylim()[1]*0.95
     ax1.text(x_text, y_text, "Epoch")
+    for ep in range(2, epoch_count):
+        ax1.axvline(x=ep1*ep, color="black", ls="--")
     ax1.xaxis.set_major_formatter(lambda x, pos: str(int(x*1e-3)))
     ax1.set_xlabel("Batches (per 1000)")
     ax1.set_ylabel("MSE Loss")
@@ -51,6 +53,8 @@ def plot_loss_by_batch(loss_path: str, epoch_count: int,
     ax2.axvline(x=ep2, color="black", ls="--")
     x_text, y_text = ep2 + ep2*0.05, ax2.get_ylim()[1]*0.95
     ax2.text(x_text, y_text, "Epoch")
+    for ep in range(2, epoch_count):
+        ax2.axvline(x=ep2*ep, color="black", ls="--")
     ax2.xaxis.set_major_formatter(lambda x, pos: str(int(x*1e-3)))
     ax2.set_xlabel("Batches (per 1000)")
 #    ax2.set_ylabel("MSE Loss")
@@ -73,16 +77,16 @@ def plot_loss_by_epoch(loss_path: list, fig_save: bool = True,
 
     ax1.plot(loss_t, color="red", ls="-", marker="o", label="full data")
     ax1.set_ylabel("MSE Loss")
-    ax1.set_xticks([0,1])
-    ax1.set_xlabel("Epochs")
+    ax1.set_xticks([0,1,2,3])
+    ax1.set_xlabel("Epoch")
     ax1.set_title("Train loss (mean per epoch)")
     ax1.grid()
 #    ax1.legend()
 
     ax2.plot(loss_v, color="red", ls="-", marker="o", label="full data")
 #    ax2.set_ylabel("MSE Loss")
-    ax2.set_xticks([0,1])
-    ax2.set_xlabel("Epochs")
+    ax2.set_xticks([0,1,2,3])
+    ax2.set_xlabel("Epoch")
     ax2.set_title("Val loss (mean per epoch)")
     ax2.grid()
 #    ax2.legend()
@@ -92,17 +96,17 @@ def plot_loss_by_epoch(loss_path: list, fig_save: bool = True,
         plt.savefig(fig_path, dpi=300, format="png", bbox_inches='tight')
 
 
-plot_loss_by_batch(loss_path="./checkpoints/unet_1_range01",
-                   epoch_count=2,
+plot_loss_by_batch(loss_path="./checkpoints/unet_1",
+                   epoch_count=4,
                    ma_k_size=300,
-                   fig_save=False,
-                   fig_path="./figures",
-                   fig_name="range01 train+val loss by batch")
-
-plot_loss_by_epoch(loss_path="./checkpoints/unet_1_range01",
                    fig_save=True,
                    fig_path="./figures",
-                   fig_name="range01 train+val loss by epoch",
+                   fig_name="unet_1 train+val loss by batch")
+
+plot_loss_by_epoch(loss_path="./checkpoints/unet_1",
+                   fig_save=True,
+                   fig_path="./figures",
+                   fig_name="unet_1 train+val loss by epoch",
                    sharey=True)
 
 

@@ -23,7 +23,7 @@ def load_torch_opt_from_checkpoint(checkpt_path: Union[str, Path],
 
     if (state_dict["epoch"] >= 0) and ("loss" in state_dict):
         last_epoch, last_loss = state_dict["epoch"], state_dict["loss"]
-        logging.info(f"Picking up training from {last_epoch=} with {last_loss=}.")
+        logging.info(f"Picking up training from {last_epoch=} with last val loss {last_loss}.")
     else:
         last_epoch, last_loss = -1, None
         logging.info("No previous training info, returning {last_epoch=}, {last_loss=}.")

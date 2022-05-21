@@ -56,7 +56,7 @@ def eval_model(model: torch.nn.Module,
         logging.info(f"Test files extracted from {data_raw_path}/{city}/test/...")
 
         if test_pred_path is None:
-            city_pred_path = Path(f"{data_raw_path}/{city}/test_pred")
+            city_pred_path = Path(f"{data_raw_path}/{city}/test_pred_point")
         else:
             city_pred_path = Path(os.path.join(test_pred_path, city))
         city_pred_path.mkdir(exist_ok=True, parents=True)
@@ -88,7 +88,6 @@ def eval_model(model: torch.nn.Module,
                                       file_filter=file_filter,
                                       dataset_limit=samp_limit + TWO_HOURS, # Limit #samples per file
                                       **dataset_config)
-#                    logging.info(f"{data.__len__()=}")
 
                     dataloader = DataLoader(dataset=data,
                                             batch_size=batch_size,
@@ -106,9 +105,8 @@ def eval_model(model: torch.nn.Module,
                     loss_city.append(loss_file)
 
                     if post_transform is not None:
-                        pred = post_transform(pred)
+                        pred = post_transform(pred) # Unpad -> (samples, 6, H, W, Ch)
 
-#                    logging.info(f"{pred.shape=}") # Shape [samples, 6, 495, 436, 8]
                     temp_h5 = os.path.join(tmpdir, f"pred_{city}_samp{idx}")
                     write_data_to_h5(data=pred, dtype=np.uint8,
                                      filename=temp_h5, compression="lzf")
@@ -116,10 +114,9 @@ def eval_model(model: torch.nn.Module,
 
                     arcname = str(file_filter[0]).split("/")[-1] # e.g. '2019-06-04_ANTWERP_8ch.h5'
                     zipf.write(filename=temp_h5, arcname=arcname)
-#                    logging.info(f"Added file as {arcname} to .zip.")
 
         logging.info(f"Written all {nr_files} pred files for {city} to .zip.")
-#       logging.info(zipf.namelist())
+        #logging.info(zipf.namelist())
         zipf_mb_size = os.path.getsize(zip_file_path) / (1024 * 1024)
         logging.info(f"Zip file '{zip_file_path}' of size {zipf_mb_size:.1f} MB.")
 
@@ -139,9 +136,9 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use) -> T
     loss_sum = 0
 
     bsize = dataloader.batch_size
-    batch_limit = min(MAX_FILE_DAY_IDX, samp_limit) // bsize # Only predict for batches up to idx 288
+    batch_limit = min(MAX_FILE_DAY_IDX, samp_limit) // bsize # Only predict for batches up to at most idx 288
 
-    ds = dataloader.dataset.__getitem__(0)[1].size() # torch.Size([48, 496, 448])
+    ds = dataloader.dataset.__getitem__(0)[1].size() # torch.Size([6 * Ch, 496, 448])
     pred = torch.empty(size=(batch_limit * bsize, ds[0], ds[1], ds[2]),
                        dtype=torch.uint8, device=device)
 
@@ -152,7 +149,7 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use) -> T
 
             X, y = X.to(device, non_blocking=parallel_use), y.to(device, non_blocking=parallel_use)
             X = X / 255
-            y_pred = model(X) # Shape [batch_size, 6*8, 496, 448], Range [0, 255]
+            y_pred = model(X) # (batch, 6 * Ch, 496, 448) in [0, 255]
             loss = loss_fct(y_pred[:, :, 1:, 6:-6], y[:, :, 1:, 6:-6])
             y_pred = torch.clamp(y_pred, 0, 255)
 
@@ -161,7 +158,7 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit, parallel_use) -> T
             tloader.set_description(f"Batch {batch+1}/{batch_limit} > eval")
             tloader.set_postfix(loss = loss_test)
 
-            # Throws error for last batch if batch_size % 2 != 0
+            # Throws error for last batch if bsize % 2 != 0
             assert pred[(batch * bsize):(batch * bsize + bsize)].shape == y_pred.shape
             pred[(batch * bsize):(batch * bsize + bsize)] = y_pred # Fill slice with batch preds
 
