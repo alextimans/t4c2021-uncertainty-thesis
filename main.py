@@ -83,11 +83,14 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--test_pred_path", type=str, default=None, required=False,
                         help="Specific directory to store test set model predictions in.")
 
-    parser.add_argument("--calibration", type=str, default=None, required=False, choices=["True", "False"],
+    parser.add_argument("--calibration", type=str, default="False", required=False, choices=["True", "False"],
                         help="Specify if should run calibration script to obtain quantiles for prediction intervals.")
-    parser.add_argument("--uq_method", type=str, default=None, required=False, choices=["tta"],
+    parser.add_argument("--uq_method", type=str, default="point", required=False, choices=["point", "tta"],
                         help="Specify UQ method for test set and/or calibration set evaluation.")
-
+    parser.add_argument("--quantiles_path", type=str, default=None, required=False,
+                        help="Quantiles filename in 'data_raw_path/city' directory, e.g. 'quantiles.h5'.")
+    parser.add_argument("--sample_idx_path", type=str, default=None, required=False,
+                        help="Test sample indices filename in 'data_raw_path/city' directory, e.g. 'test_indices.txt'.")
     return parser
 
 
@@ -136,7 +139,8 @@ def main():
 
     model_class = configs[model_str]["model_class"]
     model_config = configs[model_str]["model_config"]
-    dataset_config = configs[model_str]["dataset_config"]
+    dataset_config_main = configs[model_str]["dataset_config"]
+    dataset_config = configs[model_str]["dataset_config"][uq_method]
     dataloader_config = configs[model_str]["dataloader_config"]
     optimizer_config = configs[model_str]["optimizer_config"]
     lr_scheduler_config = configs[model_str]["lr_scheduler_config"]
@@ -155,12 +159,12 @@ def main():
                             file_filter=train_file_filter,
                             dataset_type="train",
                             dataset_limit=train_data_limit,
-                            **dataset_config)
+                            **dataset_config_main["point"])
     data_val = T4CDataset(root_dir=data_raw_path,
                           file_filter=val_file_filter,
                           dataset_type="val",
                           dataset_limit=val_data_limit,
-                          **dataset_config)
+                          **dataset_config_main["point"])
 
     assert (len(data_train) > 0) and (len(data_val) > 0)
     logging.info("Dataset sizes: Train = %s, Val = %s." %(len(data_train), len(data_val)))
@@ -205,9 +209,9 @@ def main():
         logging.info("Model trained.")
     else:
         del data_train, data_val
-        logging.info("Model training not called.")
+        logging.info("Model training not called, loaded datasets removed.")
 
-    # Obtain calibration set quantiles for prediction intervals
+    # Get calibration set quantiles for prediction intervals
     if eval(calibration) is not False:
         logging.info("Running calibration script...")
         if uq_method == "tta":
@@ -221,13 +225,13 @@ def main():
                            city_limit = test_data_limit[0],
                            to_file = True,
                            **(vars(args)))
-        logging.info("Calibration script finished..")
+        logging.info("Calibration script finished.")
 
     # Test set evaluation
     if eval(model_evaluation) is not False:
         logging.info("Evaluating model on test set...")
         if uq_method == "tta":
-            logging.info("Evaluating uncertainty using TTA...")
+            logging.info(f"Evaluating uncertainty using '{uq_method}'...")
             eval_model_tta(model=model,
                            dataset_limit=test_data_limit,
                            dataset_config=dataset_config,

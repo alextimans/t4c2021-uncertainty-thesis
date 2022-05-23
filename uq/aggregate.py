@@ -22,7 +22,9 @@ def aggregate_tta(pred):
     return pred[:, :3, ...]
 
 
-############ old code (to be revisited)
+# =============================================================================
+#  old code (to be revisited)
+# =============================================================================
 
 def aggregate_tta_ens2(pred_paths: dict, base_path: str = None, device: str = None):
 

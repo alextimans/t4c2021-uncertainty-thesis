@@ -10,7 +10,7 @@ import torch
 
 
 def load_h5_file(file_path: Union[str, Path], sl: Optional[slice] = None,
-                 to_torch: bool = True, dtype = None) -> Union[np.ndarray, torch.Tensor]:
+                 to_torch: bool = True, dtype = None):
 
     """
     Given a file path to an h5 file assumed to house a tensor, load that

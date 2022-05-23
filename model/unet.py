@@ -180,7 +180,6 @@ class UNetTransformer:
         - zeropad2d data to ensure same input and output sizes for UNet
         since rounding errors for uneven dimensions occur;
         pad input with zeroes s.t. (H, W) -> (H + pad, W + pad)
-            original: (495, 436) -> (496, 448)
     
     unet_post_transform:
         - unstack time and channel dimensions

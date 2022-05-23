@@ -20,22 +20,43 @@ configs = {
             },
 
         "dataset_config": {
-            "transform": partial(UNetTransformer.unet_pre_transform,
-                                 stack_channels_on_time=True,
-                                 zeropad2d=(6, 6, 1, 0),
-                                 batch_dim=False)
+            "point": {
+                "transform": partial(UNetTransformer.unet_pre_transform,
+                                     stack_channels_on_time=True,
+                                     zeropad2d=(6, 6, 1, 0), # (495, 436) -> (496, 448)
+                                     batch_dim=False)
+                },
+            "tta": {
+                "transform": partial(UNetTransformer.unet_pre_transform,
+                                     stack_channels_on_time=True,
+                                     zeropad2d=(30, 30, 1, 0), # (495, 436) -> (496, 496)
+                                     batch_dim=False)
+                }
             },
 
-        "pre_transform": partial(UNetTransformer.unet_pre_transform,
+        "pre_transform": {
+            "point": partial(UNetTransformer.unet_pre_transform,
                                  stack_channels_on_time=True,
                                  zeropad2d=(6, 6, 1, 0),
                                  batch_dim=True,
                                  from_numpy=False),
+            "tta": partial(UNetTransformer.unet_pre_transform,
+                                 stack_channels_on_time=True,
+                                 zeropad2d=(30, 30, 1, 0),
+                                 batch_dim=True,
+                                 from_numpy=False)
+            },
 
-        "post_transform": partial(UNetTransformer.unet_post_transform,
+        "post_transform": {
+            "point": partial(UNetTransformer.unet_post_transform,
                                   unstack_channels_on_time=True,
                                   crop=(6, 6, 1, 0),
                                   batch_dim=True),
+            "tta": partial(UNetTransformer.unet_post_transform,
+                                  unstack_channels_on_time=True,
+                                  crop=(30, 30, 1, 0),
+                                  batch_dim=True)
+            },
 
         "dataloader_config": {
             },

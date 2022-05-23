@@ -17,6 +17,7 @@ def get_quantile(pred, n: int = None, alpha: float = 0.1):
 
     Prediction tensor should contain all predictions for the calibration set
     on a single city (may be large in the first dim depending on calibration set size).
+    Prediction tensor is converted to float32 as required by torch.quantile.
 
     n: int
         Size of the calibration set.
@@ -27,7 +28,7 @@ def get_quantile(pred, n: int = None, alpha: float = 0.1):
     n = n if n is not None else pred.shape[0]
     quant = np.ceil((1 - alpha) * (n + 1)) / n
 
-    return torch.quantile(torch.abs(pred[:, 0, ...] - pred[:, 1, ...]) / pred[:, 2, ...], quant, dim=0)
+    return torch.quantile((torch.abs(pred[:, 0, ...] - pred[:, 1, ...]) / pred[:, 2, ...]).to(torch.float32), quant, dim=0)
 
 
 def get_pred_interval(pred, quantiles):
@@ -65,7 +66,7 @@ def coverage(pred):
 
     bool_mask = torch.ones_like(bool_mask[:, 0, ...]) * (torch.sum(bool_mask, dim=1) > 1)
 
-    return (torch.sum(bool_mask, dim=0) / bool_mask.shape[0]).to(torch.float16)
+    return torch.sum(bool_mask, dim=0) / bool_mask.shape[0]
 
 
 def mean_pi_width(pred):

@@ -48,7 +48,7 @@ def get_rmv_rmse(pred, bins: int = 10):
 
     assert (pred.shape[0] / bins) % 1 == 0, "Select bins s.t. it divides #samples cleanly."
 
-    bin_val = torch.empty(size=(bins, 2), dtype=torch.float16)
+    bin_val = torch.empty(size=(bins, 2))
     samp_per_bin = int(pred.shape[0] / bins)
     sort_idx = torch.sort(pred[:, 2], descending=False)[1]
 

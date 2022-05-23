@@ -17,7 +17,8 @@ class T4CDataset(Dataset):
                  file_filter: Union[str, list] = None,
                  dataset_type: Optional[str] = None,
                  dataset_limit: Optional[int] = None,
-                 transform: Optional[Callable[[torch.Tensor], torch.Tensor]] = None):
+                 transform: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+                 zeropad2d: Optional[Tuple[int, int, int, int]] = None):
 
         """ 
         Create custom torch dataset from data.
@@ -39,11 +40,14 @@ class T4CDataset(Dataset):
             Truncate dataset size (by 2h samples, not files).
         transform: Callable
             Transform applied to both the input and label.
+        zeropad2d: Tuple
+            Optional specific padding argument used for transform applied to data.
         """
 
         self.root_dir = root_dir
         self.dataset_limit = dataset_limit
         self.transform = transform
+        self.zeropad2d = zeropad2d
         self.dataset_type = dataset_type
 
         if file_filter is None:
@@ -110,8 +114,12 @@ class T4CDataset(Dataset):
         X, y = data_split_xy(two_hours)
 
         if self.transform is not None:
-            X = self.transform(X)
-            y = self.transform(y)
+            if self.zeropad2d is not None:
+                X = self.transform(X, zeropad2d=self.zeropad2d)
+                y = self.transform(y, zeropad2d=self.zeropad2d)
+            else:
+                X = self.transform(X)
+                y = self.transform(y)
 
         assert isinstance(X, torch.Tensor) and isinstance(y, torch.Tensor)
 

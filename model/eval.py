@@ -33,6 +33,7 @@ def eval_model(model: torch.nn.Module,
                data_raw_path: str,
                test_pred_path: str,
                device: str,
+               uq_method: str,
                dataset_limit: Optional[list] = None,
                **kwargs):
 
@@ -40,7 +41,7 @@ def eval_model(model: torch.nn.Module,
 
     model = model.to(device)
     loss_fct = torch.nn.functional.mse_loss
-    post_transform = configs[model_str].get("post_transform", None)
+    post_transform = configs[model_str]["post_transform"][uq_method]
     cities = [city for city in CITY_NAMES if city not in CITY_TRAIN_ONLY]
     loss_sum = []
 
