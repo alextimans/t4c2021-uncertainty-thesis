@@ -85,6 +85,8 @@ def create_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--calibration", type=str, default="False", required=False, choices=["True", "False"],
                         help="Specify if should run calibration script to obtain quantiles for prediction intervals.")
+    parser.add_argument("--calibration_size", type=int, default=100, required=False,
+                        help="Specify calibration set size to obtain quantiles for prediction intervals.")
     parser.add_argument("--uq_method", type=str, default="point", required=False, choices=["point", "tta"],
                         help="Specify UQ method for test set and/or calibration set evaluation.")
     parser.add_argument("--quantiles_path", type=str, default=None, required=False,
@@ -135,6 +137,7 @@ def main():
     val_file_filter = args.val_file_filter
 
     calibration = args.calibration
+    calibration_size = args.calibration_size
     uq_method = args.uq_method
 
     model_class = configs[model_str]["model_class"]
@@ -220,9 +223,9 @@ def main():
                            dataloader_config=dataloader_config,
                            device=device,
                            parallel_use=parallel_use,
-                           calibration_size = 500,
-                           alpha = 0.1, # 90% PIs
-                           city_limit = test_data_limit[0],
+                           calibration_size=calibration_size,
+                           alpha=0.1, # 90% PIs
+                           city_limit=test_data_limit[0],
                            to_file = True,
                            **(vars(args)))
         logging.info("Calibration script finished.")

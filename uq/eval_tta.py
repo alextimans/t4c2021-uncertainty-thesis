@@ -24,8 +24,8 @@ from uq.data_augmentation import DataAugmentation
 from uq.aggregate import aggregate_tta
 
 from metrics.pred_interval import get_quantile, get_pred_interval, coverage, mean_pi_width
-from metrics.calibration import ence, coeff_variation
-from metrics.mse import mse, mse_samples
+from metrics.calibration import ence, coeff_variation, corr
+from metrics.mse import mse, mse_samples, mse_each_samp, rmse_each_samp
 
 
 def eval_model_tta(model: torch.nn.Module,
@@ -81,94 +81,73 @@ def eval_model_tta(model: torch.nn.Module,
         else:
             sub_idx = range(0, len(data))
         logging.info(f"Evaluating for {city} on {len(sub_idx)} test set indices in range {torch.min(sub_idx).item(), torch.max(sub_idx).item()}.")
-        
-        data = Subset(data, sub_idx)
-        
-        dataloader = DataLoader(dataset=data,
+
+        dataloader = DataLoader(dataset=Subset(data, sub_idx),
                                 batch_size=1, # Important to have 1
                                 shuffle=False,
                                 num_workers=num_workers,
                                 pin_memory=parallel_use,
                                 **dataloader_config)
         
-        pred, loss_city = evaluate(device=device,
+        pred, loss_city = evaluate(device=device, # (samples, 3, H, W, Ch)
                                    loss_fct=loss_fct,
                                    dataloader=dataloader,
                                    model=model,
                                    samp_limit=len(sub_idx),
                                    parallel_use=parallel_use,
-                                   post_transform=post_transform,
-                                   no_day_limit=True)
-        logging.info(f"Obtained predictions as {pred.shape, pred.dtype}.")
+                                   post_transform=post_transform)
 
-        pred = aggregate_tta(pred) # (samples, 3, 6, H, W, Ch)
-        logging.info(f"Aggregated predictions to obtain uncertainty via {uq_method} as {pred.shape, pred.dtype}.")
+        logging.info(f"Obtained predictions with uncertainty {uq_method} as {pred.shape, pred.dtype}.")
         if pred_to_file:
             write_data_to_h5(data=pred, dtype=np.float16, compression="lzf", verbose=True,
                              filename=os.path.join(city_pred_path, f"pred_{uq_method}.h5"))
         
         quant = os.path.join(data_raw_path, city, quantiles_path)
-        pred_interval = get_pred_interval(pred[:, 1:, ...], load_h5_file(quant, dtype=torch.float16)) # (samples, 2, 6, H, W, Ch)
+        pred_interval = get_pred_interval(pred[:, 1:, ...], load_h5_file(quant, dtype=torch.float16)) # (samples, 2, H, W, Ch) torch.float32
         logging.info(f"Obtained prediction intervals as {pred_interval.shape, pred_interval.dtype}.")
         if pi_to_file:
             write_data_to_h5(data=pred_interval, dtype=np.float16, compression="lzf", verbose=True,
                              filename=os.path.join(city_pred_path, f"pi_{uq_method}.h5"))
         
-        # tensor (5, 6, H, W, Ch) containing all the metric scores across the sample dimension
-        scores = torch.stack((mean_pi_width(pred_interval.to(torch.float32)),
-                              coverage(torch.cat((pred[:, 0, ...].unsqueeze(dim=1), pred_interval), dim=1).to(torch.float32)),
-                              ence(pred.to(torch.float32)),
-                              coeff_variation(pred[:, 2, ...].to(torch.float32)),
-                              mse_samples(pred[:, :2, ...].to(torch.float32))
+        # tensor (metric, H, W, Ch) containing all the metrics across the sample dimension
+        scores = torch.stack((mean_pi_width(pred_interval),
+                              coverage(torch.cat((pred[:, 0, ...].unsqueeze(dim=1), pred_interval), dim=1)),
+                              ence(pred),
+                              corr(torch.stack((rmse_each_samp(pred[:, :2, ...]), pred[:, 2, ...]), dim=1)),
+                              coeff_variation(pred[:, 2, ...]),
+                              mse_samples(pred[:, :2, ...]),
+                              torch.mean(pred[:, 2, ...], dim=0),
+                              torch.mean(pred[:, 0, ...], dim=0)
                               ), dim=0)
-        logging.info(f"Obtained metric scores across sample dimension as {scores.shape, scores.dtype}.")
         del data, pred, pred_interval
-        
+        logging.info(f"Obtained metric scores across sample dimension as {scores.shape, scores.dtype}.")
         if scores_to_file:
             write_data_to_h5(data=scores, dtype=np.float16, compression="lzf", verbose=True,
                              filename=os.path.join(city_pred_path, f"scores_{uq_method}.h5"))
-        
-        horizon, channels = 5, [1, 3, 5, 7] # pred 1h into future + speed channels only
-        scalar_scores = torch.Tensor((
-            torch.mean(scores[0, horizon, :, :, channels]),
-            torch.mean(scores[1, horizon, :, :, channels]),
-            torch.mean(scores[2, horizon, :, :, channels]),
-            torch.mean(scores[3, horizon, :, :, channels]),
-            torch.mean(scores[4, horizon, :, :, channels])))
+
+        scalar_scores = torch.mean(scores[..., [1, 3, 5, 7]], dim=(1,2,3)) # pred speed channels only
         del scores
 
-        logging.info(f"Scalar scores for prediction {horizon=} and {channels=}:")
-        logging.info(f"[mean PI width, cov, ence, coeff_var, mse] --> {scalar_scores.numpy()}.")
-        save_file_to_folder(file=scalar_scores, filename=f"scalar_scores_{uq_method}", folder_dir=city_pred_path,
-                            fmt="%.4f", header="[mean PI width, cov, ence, coeff_var, mse]")
+        comment = "[pi_width_avg, coverage, ence, corr, coeff_var, mse_samp_avg, unc_samp_avg, ytrue_samp_avg]"
+        logging.info(f"Scalar scores for pred horizon 1h and speed channels: {comment} -> {scalar_scores.numpy()}")
+        save_file_to_folder(file=scalar_scores, filename=f"scalar_scores_{uq_method}",
+                            folder_dir=city_pred_path, fmt="%.4f", header=comment)
 
         logging.info(f"Evaluation via {uq_method} finished for {city}.")
     logging.info(f"Evaluation via {uq_method} finished for all cities in {cities}.")
 
-# pred: float16 / pred_interval: float16 / scores: float32 / scalar_scores: float32
-# mse_samples: (samples, 2, 6, H, W, Ch) -> (6, H, W, Ch)
-# ence: (samples, 3, 6, H, W, Ch) -> (6, H, W, Ch)
-# coeff_variation: (samples, 6, H, W, Ch) -> (6, H, W, Ch)
-# get_pred_interval: (samples, 2, 6, H, W, Ch) + (6, H, W, Ch) -> (samples, 2, 6, H, W, Ch)
-# coverage: (samples, 3, 6, H, W, Ch) -> (6, H, W, Ch)
-# mean_pi_width: (samples, 2, 6, H, W, Ch) -> (6, H, W, Ch)
 
 @torch.no_grad()
 def evaluate(device, loss_fct, dataloader, model, samp_limit,
-             parallel_use, post_transform, no_day_limit: bool = False) -> Tuple[torch.HalfTensor, float]:
+             parallel_use, post_transform) -> Tuple[torch.Tensor, float]:
+
     model.eval()
     loss_sum = 0
-    data_augmenter = DataAugmentation()
-
     bsize = dataloader.batch_size
-    if no_day_limit:
-        batch_limit = samp_limit // bsize # No hard-coded limit
-    else:
-        batch_limit = min(MAX_FILE_DAY_IDX, samp_limit) // bsize # Only predict for batches up to at most idx 288
-
-    pred = torch.empty( # Pred contains y_true + pred original img + pred for k augmented imgs: (samples, 1+1+k, 6, H, W, Ch)
-        size=(batch_limit * bsize, 2 + data_augmenter.nr_augments, 6, 495, 436, 8),
-        dtype=torch.float16, device=device)
+    batch_limit = samp_limit // bsize
+    data_augmenter = DataAugmentation()
+    pred = torch.empty( # Pred contains y_true + pred original img + uncertainty: (samples, 3, H, W, Ch)
+        size=(batch_limit * bsize, 3, 495, 436, 8), dtype=torch.float32, device=device)
 
     # Use only batch_size = 1 for dataloader since augmentations are interpreted as a batch
     with tqdm(dataloader) as tloader:
@@ -176,25 +155,15 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit,
             if batch == batch_limit:
                 break
 
-            X, y = X.to(device, non_blocking=parallel_use), y.to(device, non_blocking=parallel_use)
-            # logging.info(f"{X.shape, torch.min(X), torch.max(X)}")
-            # logging.info(f"{y.shape, torch.min(y), torch.max(y)}")
-            X = X / 255
-            # logging.info(f"{X.shape, torch.min(X), torch.max(X)}")
+            X, y = X.to(device, non_blocking=parallel_use) / 255, y.to(device, non_blocking=parallel_use)
             X = data_augmenter.transform(X) # (1+k, 12 * Ch, H+pad, W+pad) in [0, 1]
-            # logging.info(f"{X.shape, torch.min(X), torch.max(X)}")
 
             y_pred = model(X) # (1+k, 6 * Ch, H+pad, W+pad) in [0, 255]
-            # logging.info(f"{y_pred.shape, torch.min(y_pred), torch.max(y_pred)}")
             loss = loss_fct(y_pred[0, :, 1:, 30:-30], y[:, :, 1:, 30:-30].squeeze(dim=0)) # For original img & unpadded
 
-            y_pred = data_augmenter.detransform(y_pred) # (1+k, 6 * Ch, H+pad, W+pad)
-            # logging.info(y_pred.shape)
-            y_pred = post_transform(y_pred) # (1+k, 6, H, W, Ch)
-            # logging.info(y_pred.shape)
-            y_pred = torch.cat((post_transform(y), y_pred), dim=0) # add y_true: (1+1+k, 6, H, W, Ch)
-            # logging.info(f"{y_pred.shape, torch.min(y_pred), torch.max(y_pred)}")
-            y_pred = torch.clamp(y_pred, 0, 255).unsqueeze(dim=0)
+            y_pred[...] = data_augmenter.detransform(y_pred) # (1+k, 6 * Ch, H+pad, W+pad)
+            y_pred = aggregate_tta(y_pred) # (2, 6 * Ch, H+pad, W+pad)
+            y_pred = post_transform(torch.cat((y, y_pred), dim=0))[:, 5, ...].clamp(0, 255).unsqueeze(dim=0) # (1, 3, H, W, Ch), only consider pred horizon 1h
             # logging.info(f"{y_pred.shape, torch.min(y_pred), torch.max(y_pred)}")
 
             loss_sum += float(loss.item())
@@ -202,10 +171,9 @@ def evaluate(device, loss_fct, dataloader, model, samp_limit,
             tloader.set_description(f"Batch {batch+1}/{batch_limit} > eval")
             tloader.set_postfix(loss = loss_test)
 
-            # logging.info(pred.shape)
-            # logging.info(pred[(batch * bsize):(batch * bsize + bsize)].shape)
             assert pred[(batch * bsize):(batch * bsize + bsize)].shape == y_pred.shape
             pred[(batch * bsize):(batch * bsize + bsize)] = y_pred # Fill slice
+            del X, y, y_pred
 
     return pred, loss_test
 
@@ -220,7 +188,7 @@ def eval_calib_tta(model: torch.nn.Module,
                    data_raw_path: str,
                    device: str,
                    uq_method: str,
-                   calibration_size: int = 500,
+                   calibration_size: int = 100,
                    alpha: float = 0.1,
                    city_limit: Optional[int] = None,
                    to_file: bool = True,
@@ -247,10 +215,9 @@ def eval_calib_tta(model: torch.nn.Module,
         data = T4CDataset(root_dir=data_raw_path,
                           file_filter=val_file_paths,
                           **dataset_config)
-        sub_idx = random.sample(range(0, len(data)), calibration_size)
-        data = Subset(data, sub_idx)
 
-        dataloader = DataLoader(dataset=data,
+        sub_idx = random.sample(range(0, len(data)), calibration_size)
+        dataloader = DataLoader(dataset=Subset(data, sub_idx),
                                 batch_size=1, # Important to have 1
                                 shuffle=False,
                                 num_workers=num_workers,
@@ -263,23 +230,19 @@ def eval_calib_tta(model: torch.nn.Module,
                                    model=model,
                                    samp_limit=calibration_size,
                                    parallel_use=parallel_use,
-                                   post_transform=post_transform,
-                                   no_day_limit=True)
-        logging.info(f"Obtained predictions as {pred.shape}.")
+                                   post_transform=post_transform)
+        logging.info(f"Obtained predictions with uncertainty {uq_method} as {pred.shape, pred.dtype}.")
         logging.info(f"MSE loss for {city}: {loss_city}.")
 
-        pred = aggregate_tta(pred) # (samples, 3, 6, H, W, Ch)
-        logging.info(f"Aggregated predictions to obtain uncertainty via {uq_method} as {pred.shape}.")
-
-        pred = get_quantile(pred, n=calibration_size, alpha=alpha).to(torch.float16) # (6, H, W, Ch)
-        logging.info(f"Obtained quantiles as {pred.shape}.")
+        pred[0, 0, ...] = get_quantile(pred, n=calibration_size, alpha=alpha) # (H, W, Ch)
+        logging.info(f"Obtained quantiles as {pred[0, 0, ...].shape, pred[0, 0, ...].dtype}.")
 
         if to_file:
             file = os.path.join(data_raw_path, city, f"calib_quant_{int((1-alpha)*100)}_tta_{model_str+str(model_id)}.h5")
-            write_data_to_h5(data=pred, dtype=np.float16, filename=file, compression="lzf", verbose=True)
-    logging.info(f"Written all calibration set {(1-alpha)*100}% quantiles for {cities=} to file.")
+            write_data_to_h5(data=pred[0, 0, ...], dtype=np.float16, filename=file, compression="lzf", verbose=True)
 
-    del data, dataloader, pred
+        del data, dataloader, pred
+    logging.info(f"Written all calibration set {(1-alpha)*100}% quantiles for {cities=} to file.")
 
 
 """

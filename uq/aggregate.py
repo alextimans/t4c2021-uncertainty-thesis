@@ -10,20 +10,34 @@ from util.h5_util import load_h5_file, write_data_to_h5
 def aggregate_tta(pred):
 
     """
-    Receives: prediction tensor (samples, 1+1+k, 6, H, W, Ch),
+    Receives: prediction tensor (1+k, 6 * Ch, H, W) and
     computes the aleatoric uncertainty obtained via test-time augmentation.
-    Returns: tensor (samples, 3, 6, H, W, Ch) where 2nd dimension
-    '3' is y_true (0), point prediction (1), aleatoric uncertainty (2).
+    Returns: tensor (2, 6 * Ch, H, W) where 1st dimension is point prediction (0),
+    uncertainty measure (1).
     """
 
-    # Aleatoric uncertainty estimation: std over original + augmented imgs
-    pred[:, 2, ...] = torch.std(pred[:, 1:, ...], dim=1, unbiased=False)
-
-    return pred[:, :3, ...]
+    # Aleatoric uncertainty estimation: std over original & augmented imgs (+ eps)
+    return torch.stack((pred[0, ...], torch.std(pred[1:, ...], dim=0, unbiased=False) + 1e-5), dim=0)
 
 
 # =============================================================================
 #  old code (to be revisited)
+# =============================================================================
+
+# =============================================================================
+# def aggregate_tta(pred):
+# 
+#     """
+#     Receives: prediction tensor (samples, 1+1+k, 6, H, W, Ch),
+#     computes the aleatoric uncertainty obtained via test-time augmentation.
+#     Returns: tensor (samples, 3, 6, H, W, Ch) where 2nd dimension
+#     '3' is y_true (0), point prediction (1), aleatoric uncertainty (2).
+#     """
+# 
+#     # Aleatoric uncertainty estimation: std over original & augmented imgs (+ eps)
+#     pred[:, 2, ...] = torch.std(pred[:, 1:, ...], dim=1, unbiased=False) + 1e-5
+# 
+#     return pred[:, :3, ...]
 # =============================================================================
 
 def aggregate_tta_ens2(pred_paths: dict, base_path: str = None, device: str = None):
