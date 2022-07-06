@@ -24,7 +24,7 @@ configs = {
             "point": point_pred.PointPred(),
             "tta": data_augmentation.DataAugmentation(),
             "ensemble": ensemble.DeepEnsemble(load_from_epoch=[1,1,1,1,1]),
-            "bnorm": stochastic_batchnorm.StochasticBatchNorm(passes=2, train_batch_size=2)
+            "bnorm": stochastic_batchnorm.StochasticBatchNorm(passes=10, train_batch_size=12)
         },
 
         "dataset_config": {

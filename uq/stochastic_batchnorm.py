@@ -1,4 +1,5 @@
 import random
+import logging
 from typing import Tuple
 
 import torch
@@ -12,6 +13,7 @@ class StochasticBatchNorm:
     def __init__(self, passes: int, train_batch_size: int):
         self.passes = passes
         self.train_batch_size = train_batch_size
+        logging.info(f"Init StochasticBatchNorm with {self.passes=} and {self.train_batch_size=}.")
 
     def load_train_data(self, data_raw_path: str, dataset_config: dict):
         self.data_train = T4CDataset(root_dir=data_raw_path,
@@ -31,6 +33,7 @@ class StochasticBatchNorm:
             model.down_path[0].block[2].track_running_stats = False
             model.down_path[0].block[5].train()
             model.down_path[0].block[5].track_running_stats = False
+        logging.info(f"Set BatchNorm in train mode, {set_all=}.")
 
     def aggregate(self, pred):
         
