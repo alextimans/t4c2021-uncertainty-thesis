@@ -3,8 +3,6 @@
 import argparse
 import logging
 import sys
-#import yaml
-
 import torch
 
 from data.dataset import T4CDataset
@@ -12,14 +10,13 @@ from data.dataset import T4CDataset
 from model.configs import configs
 from model.train import run_model
 from model.train_val_split import train_val_split
-from model.eval import eval_model
 from model.checkpointing import load_torch_model_from_checkpoint
 
 from util.logging import t4c_apply_basic_logging_config
 from util.get_device import get_device
 from util.set_seed import set_seed
 
-from uq.eval_tta import eval_model_tta, eval_calib_tta
+from uq.eval_model import eval_test, eval_calib
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -87,7 +84,7 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Specify if should run calibration script to obtain quantiles for prediction intervals.")
     parser.add_argument("--calibration_size", type=int, default=100, required=False,
                         help="Specify calibration set size to obtain quantiles for prediction intervals.")
-    parser.add_argument("--uq_method", type=str, default="point", required=False, choices=["point", "tta"],
+    parser.add_argument("--uq_method", type=str, default="point", required=False, choices=["point", "tta", "ensemble", "bnorm"],
                         help="Specify UQ method for test set and/or calibration set evaluation.")
     parser.add_argument("--quantiles_path", type=str, default=None, required=False,
                         help="Quantiles filename in 'data_raw_path/city' directory, e.g. 'quantiles.h5'.")
@@ -115,7 +112,6 @@ def main():
     parser = create_parser()
     args = parser.parse_args()
     logging.info("CLI arguments parsed.")
-    #config = yaml.safe_load(open(args.config_path))
 
     # Named args (from parser + config file)
     model_str = args.model_str
@@ -137,7 +133,6 @@ def main():
     val_file_filter = args.val_file_filter
 
     calibration = args.calibration
-    calibration_size = args.calibration_size
     uq_method = args.uq_method
 
     model_class = configs[model_str]["model_class"]
@@ -217,40 +212,28 @@ def main():
     # Get calibration set quantiles for prediction intervals
     if eval(calibration) is not False:
         logging.info("Running calibration script...")
-        if uq_method == "tta":
-            eval_calib_tta(model=model,
-                           dataset_config=dataset_config,
-                           dataloader_config=dataloader_config,
-                           device=device,
-                           parallel_use=parallel_use,
-                           calibration_size=calibration_size,
-                           alpha=0.1, # 90% PIs
-                           city_limit=test_data_limit[0],
-                           to_file = True,
-                           **(vars(args)))
+        eval_calib(model=model,
+                    dataset_config=dataset_config,
+                    dataloader_config=dataloader_config,
+                    device=device,
+                    parallel_use=parallel_use,
+                    alpha=0.1, # 90% PIs
+                    city_limit=test_data_limit[0],
+                    to_file = True,
+                    **(vars(args)))
         logging.info("Calibration script finished.")
 
     # Test set evaluation
     if eval(model_evaluation) is not False:
         logging.info("Evaluating model on test set...")
-        if uq_method == "tta":
-            logging.info(f"Evaluating uncertainty using '{uq_method}'...")
-            eval_model_tta(model=model,
-                           dataset_limit=test_data_limit,
-                           dataset_config=dataset_config,
-                           dataloader_config=dataloader_config,
-                           device=device,
-                           parallel_use=parallel_use,
-                           **(vars(args)))
-        else:
-            logging.info("No UQ method given, point-wise predictions only.")
-            eval_model(model=model,
-                       dataset_limit=test_data_limit,
-                       dataset_config=dataset_config,
-                       dataloader_config=dataloader_config,
-                       device=device,
-                       parallel_use=parallel_use,
-                       **(vars(args)))
+        logging.info(f"Evaluating uncertainty using '{uq_method}'...")
+        eval_test(model=model,
+                    dataset_limit=test_data_limit,
+                    dataset_config=dataset_config,
+                    dataloader_config=dataloader_config,
+                    device=device,
+                    parallel_use=parallel_use,
+                    **(vars(args)))
         logging.info("Model evaluated.")
     else:
         logging.info("Model test set evaluation not called.")

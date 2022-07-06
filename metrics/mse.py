@@ -14,7 +14,7 @@ def mse(pred):
 
 
 def mse_samples(pred):
- 
+
     """
     Receives: prediction tensor (samples, 2, 6, H, W, Ch), where 2nd dim
     '2' is y_true (0) and some prediction (1) (e.g. only point or point + uncertainty).

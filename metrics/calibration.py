@@ -19,9 +19,9 @@ def corr(pred):
     return (torch.sum(
                 (pred[:, 0, ...] - torch.mean(pred[:, 0, ...], dim=0)) * (pred[:, 1, ...] - torch.mean(pred[:, 1, ...], dim=0)), dim=0
                 ) * torch.rsqrt(
-                    torch.sum((pred[:, 0, ...] - torch.mean(pred[:, 0, ...], dim=0))**2, dim=0)
+                    torch.sum((pred[:, 0, ...] - torch.mean(pred[:, 0, ...], dim=0))**2, dim=0).clamp(min=1e-4)
                 ) * torch.rsqrt(
-                    torch.sum((pred[:, 1, ...] - torch.mean(pred[:, 1, ...], dim=0))**2, dim=0)
+                    torch.sum((pred[:, 1, ...] - torch.mean(pred[:, 1, ...], dim=0))**2, dim=0).clamp(min=1e-4)
                 )
             )
 

@@ -35,7 +35,7 @@ def run_model(model: torch.nn.Module,
               parallel_use: bool,
               display_system_status: bool,
               device: str,
-              **kwargs) -> Tuple[torch.nn.Module, str]:
+              **kwargs):
 
     logging.info("Running %s..." %(sys._getframe().f_code.co_name)) # Current fct name
 
