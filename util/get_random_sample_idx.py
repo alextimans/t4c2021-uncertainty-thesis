@@ -14,10 +14,12 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Limit cities for which to generate test index files.")
     parser.add_argument("--samp_size", type=int, default=100, required=False,
                         help="#samples for test run.")
+    parser.add_argument("--antwerp_2019", type=str, default="False", required=False, choices=["True", "False"],
+                        help="'Boolean' if sample for 2019 data only for Antwerp. Otherwise sampled only from 2020 data.")
     return parser
 
 
-def get_random_sample_idx(citylist: list, samp_size: int):
+def get_random_sample_idx(citylist: list, samp_size: int, antwerp_2019: str):
 
     cities = [city for city in CITY_NAMES if city not in CITY_TRAIN_ONLY]
     if not any(citylist):
@@ -26,7 +28,10 @@ def get_random_sample_idx(citylist: list, samp_size: int):
 
     for city in cities:
         if city == "ANTWERP":
-            sub_idx = random.sample(range(25920, 51840), samp_size) # antwerp 2020
+            if eval(antwerp_2019):
+                sub_idx = random.sample(range(0, 25920), samp_size) # antwerp 2019
+            else:
+                sub_idx = random.sample(range(25920, 51840), samp_size) # antwerp 2020
         else:
             sub_idx = random.sample(range(0, 25920), samp_size) # other cities 2020
 
@@ -44,7 +49,7 @@ def save_file_to_folder(file = None, filename: str = None,
 def main():
     parser = create_parser()
     args = parser.parse_args()
-    get_random_sample_idx(citylist=args.cities, samp_size=args.samp_size)
+    get_random_sample_idx(citylist=args.cities, samp_size=args.samp_size, antwerp_2019=args.antwerp_2019)
 
 
 if __name__ == "__main__":

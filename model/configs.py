@@ -3,7 +3,9 @@
 from functools import partial
 from model.unet import UNet
 from model.unet import UNetTransformer
-from uq import point_pred, data_augmentation, ensemble, stochastic_batchnorm
+from model.unet_patches import UNetPatches
+from model.unet_patches import UNetTransfomer
+from uq import point_pred, data_augmentation, ensemble, stochastic_batchnorm, patches
 
 
 configs = {
@@ -122,6 +124,56 @@ configs = {
             "save_each_epoch": True,
             "loss_improve": "min",
             "verbose": True
+            }
+    },
+
+    "unet_patches": {
+        "model_class": UNetPatches,
+
+        "model_config": {
+            "in_channels": 12 * 8,
+            "n_classes": 6 * 8,
+            "depth": 5,
+            "wf": 6,
+            "padding": True,
+            "batch_norm": True,
+            "up_mode": "upconv"
+            },
+
+        "uq_method": {
+            "patches": patches.PatchUncertainty(radius=50, stride=30)
+            },
+
+        "dataset_config": {
+            "patches": {
+                # "transform": torch.nn.Identity
+                }
+            },
+
+        "pre_transform": {
+            "patches": partial(UNetTransfomer.unet_pre_transform,
+                               stack_channels_on_time=True,
+                               zeropad2d=(6, 6, 6, 6),
+                               batch_dim=True,
+                               from_numpy=True,
+                               normalize=True)
+            },
+
+        "post_transform": {
+            "patches": partial(UNetTransfomer.unet_post_transform,
+                               stack_channels_on_time=True,
+                               crop=(6, 6, 6, 6),
+                               batch_dim=True,
+                               normalize=True)
+            },
+
+        "dataloader_config": {
+            },
+        "optimizer_config": {
+            },
+        "lr_scheduler_config":{
+            },
+        "earlystop_config":{
             }
     }
 }

@@ -53,6 +53,8 @@ def eval_test(model: torch.nn.Module,
         uq_method_obj.load_ensemble(device, save_checkpoint, configs[model_str]["model_class"], configs[model_str]["model_config"])
     elif uq_method == "bnorm":
         uq_method_obj.load_train_data(data_raw_path, configs[model_str]["dataset_config"]["point"])
+    elif uq_method == "patches":
+        uq_method_obj.set_pre_transform(configs[model_str]["pre_transform"][uq_method])
 
     if dataset_limit[0] is not None: # Limit #cities
         assert dataset_limit[0] <= len(cities)
@@ -162,6 +164,8 @@ def eval_calib(model: torch.nn.Module,
         uq_method_obj.load_ensemble(device, save_checkpoint, configs[model_str]["model_class"], configs[model_str]["model_config"])
     elif uq_method == "bnorm":
         uq_method_obj.load_train_data(data_raw_path, configs[model_str]["dataset_config"]["point"])
+    elif uq_method == "patches":
+        uq_method_obj.set_pre_transform(configs[model_str]["pre_transform"][uq_method])
 
     if city_limit is not None: # Limit #cities
         assert city_limit <= len(cities)

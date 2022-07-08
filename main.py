@@ -23,8 +23,8 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Parser for CLI arguments to run model.",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
-    parser.add_argument("--model_str", type=str, default="unet", required=False,
-                        help="Model string name. Choice of 'unet'.")
+    parser.add_argument("--model_str", type=str, default="unet", required=False, choices=["unet", "unet_patches"],
+                        help="Model string name.")
     parser.add_argument("--model_id", type=int, default=1, required=False,
                         help="Model ID to differentiate models easier than via timestamp.")
     parser.add_argument("--model_training", type=str, default="True", required=False, choices=["True", "False"],
@@ -84,7 +84,7 @@ def create_parser() -> argparse.ArgumentParser:
                         help="Specify if should run calibration script to obtain quantiles for prediction intervals.")
     parser.add_argument("--calibration_size", type=int, default=100, required=False,
                         help="Specify calibration set size to obtain quantiles for prediction intervals.")
-    parser.add_argument("--uq_method", type=str, default="point", required=False, choices=["point", "tta", "ensemble", "bnorm"],
+    parser.add_argument("--uq_method", type=str, default="point", required=False, choices=["point", "tta", "ensemble", "bnorm", "patches"],
                         help="Specify UQ method for test set and/or calibration set evaluation.")
     parser.add_argument("--quantiles_path", type=str, default=None, required=False,
                         help="Quantiles filename in 'data_raw_path/city' directory, e.g. 'quantiles.h5'.")
@@ -137,7 +137,6 @@ def main():
 
     model_class = configs[model_str]["model_class"]
     model_config = configs[model_str]["model_config"]
-    dataset_config_main = configs[model_str]["dataset_config"]
     dataset_config = configs[model_str]["dataset_config"][uq_method]
     dataloader_config = configs[model_str]["dataloader_config"]
     optimizer_config = configs[model_str]["optimizer_config"]
@@ -157,12 +156,12 @@ def main():
                             file_filter=train_file_filter,
                             dataset_type="train",
                             dataset_limit=train_data_limit,
-                            **dataset_config_main["point"])
+                            **configs["unet"]["dataset_config"]["point"])
     data_val = T4CDataset(root_dir=data_raw_path,
                           file_filter=val_file_filter,
                           dataset_type="val",
                           dataset_limit=val_data_limit,
-                          **dataset_config_main["point"])
+                          **configs["unet"]["dataset_config"]["point"])
 
     assert (len(data_train) > 0) and (len(data_val) > 0)
     logging.info("Dataset sizes: Train = %s, Val = %s." %(len(data_train), len(data_val)))
