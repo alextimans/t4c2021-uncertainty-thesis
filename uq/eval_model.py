@@ -34,11 +34,14 @@ def eval_test(model: torch.nn.Module,
                 uq_method: str,
                 save_checkpoint: str,
                 quantiles_path: str,
-                sample_idx_path: str = None,
+                alpha: float,
+                test_samp_name: str,
+                test_samp_path: str = None,
                 dataset_limit: Optional[list] = None,
                 pred_to_file: bool = True,
                 pi_to_file: bool = True,
                 scores_to_file: bool = True,
+                masked_scores: bool = True,
                 **kwargs):
 
     logging.info("Running %s..." %(sys._getframe().f_code.co_name)) # Current fct name
@@ -69,16 +72,19 @@ def eval_test(model: torch.nn.Module,
 
         if test_pred_path is None:
             city_pred_path = Path(f"{data_raw_path}/{city}/test_{uq_method}_{model_str+str(model_id)}")
+            city_pred_path.mkdir(exist_ok=True, parents=True)
         else:
-            city_pred_path = Path(os.path.join(test_pred_path, city))
-        city_pred_path.mkdir(exist_ok=True, parents=True)
+            h5_pred_path = Path(os.path.join(test_pred_path, "h5_files", city))
+            score_pred_path = Path(os.path.join(test_pred_path, "scores", city))
+            h5_pred_path.mkdir(exist_ok=True, parents=True)
+            score_pred_path.mkdir(exist_ok=True, parents=True)
         
         data = T4CDataset(root_dir=data_raw_path,
                           file_filter=test_file_paths,
                           **dataset_config)
         
-        if sample_idx_path is not None:
-            sub_idx = torch.from_numpy(np.loadtxt(os.path.join(data_raw_path, city, sample_idx_path))).to(torch.int)
+        if test_samp_path is not None:
+            sub_idx = torch.from_numpy(np.loadtxt(os.path.join(test_samp_path, city, test_samp_name))).to(torch.int)
         else:
             sub_idx = range(0, len(data)) # All data
         logging.info(f"Evaluating for {city} on {len(sub_idx)} test set indices in range {torch.min(sub_idx).item(), torch.max(sub_idx).item()}.")
@@ -101,34 +107,55 @@ def eval_test(model: torch.nn.Module,
         logging.info(f"Obtained predictions with uncertainty {uq_method} as {pred.shape, pred.dtype}.")
         if pred_to_file:
             write_data_to_h5(data=pred, dtype=np.float16, compression="lzf", verbose=True,
-                             filename=os.path.join(city_pred_path, f"pred_{uq_method}.h5"))
+                             filename=os.path.join(h5_pred_path, f"pred_{uq_method}.h5"))
         
-        quant = os.path.join(data_raw_path, city, quantiles_path)
+        #quant = os.path.join(data_raw_path, city, quantiles_path)
+        quant = os.path.join(quantiles_path, city, f"quant_{int((1-alpha)*100)}_{uq_method}.h5")
         logging.info(f"Using quantiles from '{quant}'.")
         pred_interval = get_pred_interval(pred[:, 1:, ...], load_h5_file(quant, dtype=torch.float16).to(device)) # (samples, 2, H, W, Ch) torch.float32
         logging.info(f"Obtained prediction intervals as {pred_interval.shape, pred_interval.dtype}.")
         if pi_to_file:
             write_data_to_h5(data=pred_interval, dtype=np.float16, compression="lzf", verbose=True,
-                             filename=os.path.join(city_pred_path, f"pi_{uq_method}.h5"))
+                             filename=os.path.join(h5_pred_path, f"pi_{uq_method}.h5"))
 
         scores = get_scores(pred, pred_interval)
+        if masked_scores:
+            logging.info("Also calculating scores for mask where volume > 0.")
+            # which pixels have sum of vol > 0 across sample dimension
+            mask_vol = pred[:, 0, :, :, [0, 2, 4, 6]].sum(dim=(0, -1)) > 0
+            mask_scores = get_scores(
+                pred[..., mask_vol, :].unsqueeze(dim=-2),
+                pred_interval[..., mask_vol, :].unsqueeze(dim=-2))
+            del mask_vol
         del data, pred, pred_interval
+
         logging.info(f"Obtained metric scores across sample dimension as {scores.shape, scores.dtype}.")
         if scores_to_file:
             write_data_to_h5(data=scores, dtype=np.float16, compression="lzf", verbose=True,
-                             filename=os.path.join(city_pred_path, f"scores_{uq_method}.h5"))
+                             filename=os.path.join(h5_pred_path, f"scores_{uq_method}.h5"))
+            if masked_scores:
+                write_data_to_h5(data=mask_scores, dtype=np.float16, compression="lzf", verbose=True,
+                                 filename=os.path.join(h5_pred_path, f"scores_{uq_method}_mask.h5"))
 
         score_names = get_score_names()
         scalar_speed, scalar_vol = get_scalar_scores(scores, device)
         del scores
+        if masked_scores:
+            scalar_speed_mask, scalar_vol_mask = get_scalar_scores(mask_scores, device)
+            del mask_scores
 
         logging.info(f"Scores ==> {score_names}")
         logging.info(f"Scores for pred horizon 1h and speed channels: {scalar_speed}")
         logging.info(f"Scores for pred horizon 1h and volume channels: {scalar_vol}")
-        save_file_to_folder(file=scalar_speed.cpu().numpy(), filename=f"scalar_scores_speed_{uq_method}",
-                            folder_dir=city_pred_path, fmt="%.4f", header=score_names)
-        save_file_to_folder(file=scalar_vol.cpu().numpy(), filename=f"scalar_scores_vol_{uq_method}",
-                            folder_dir=city_pred_path, fmt="%.4f", header=score_names)
+        save_file_to_folder(file=scalar_speed.cpu().numpy(), filename=f"scores_{uq_method}_speed",
+                            folder_dir=score_pred_path, fmt="%.4f", header=score_names)
+        save_file_to_folder(file=scalar_vol.cpu().numpy(), filename=f"scores_{uq_method}_vol",
+                            folder_dir=score_pred_path, fmt="%.4f", header=score_names)
+        if masked_scores:
+            save_file_to_folder(file=scalar_speed_mask.cpu().numpy(), filename=f"scores_{uq_method}_speed_mask",
+                                folder_dir=score_pred_path, fmt="%.4f", header=score_names)
+            save_file_to_folder(file=scalar_vol_mask.cpu().numpy(), filename=f"scores_{uq_method}_vol_mask",
+                                folder_dir=score_pred_path, fmt="%.4f", header=score_names)
 
         logging.info(f"Evaluation via {uq_method} finished for {city}.")
     logging.info(f"Evaluation via {uq_method} finished for all cities in {cities}.")
@@ -143,11 +170,12 @@ def eval_calib(model: torch.nn.Module,
                 model_id: int,
                 parallel_use: bool,
                 data_raw_path: str,
+                quantiles_path: str,
                 device: str,
                 uq_method: str,
                 save_checkpoint: str,
-                calibration_size: int = 100,
-                alpha: float = 0.1,
+                calibration_size: int,
+                alpha: float,
                 city_limit: Optional[int] = None,
                 to_file: bool = True,
                 **kwargs):
@@ -200,12 +228,19 @@ def eval_calib(model: torch.nn.Module,
         logging.info(f"Obtained predictions with uncertainty {uq_method} as {pred.shape, pred.dtype}.")
         logging.info(f"MSE loss for {city}: {loss_city}.")
 
-        pred[0, 0, ...] = get_quantile(pred, n=calibration_size, alpha=alpha) # (H, W, Ch)
-        logging.info(f"Obtained quantiles as {pred[0, 0, ...].shape, pred[0, 0, ...].dtype}.")
+        #pred[0, 0, ...] = get_quantile(pred, n=calibration_size, alpha=alpha) # (H, W, Ch)
+        quant = get_quantile(pred, n=calibration_size, alpha=alpha) # (H, W, Ch)
+        logging.info(f"Obtained quantiles as {quant.shape, quant.dtype}.")
 
         if to_file:
-            file = os.path.join(data_raw_path, city, f"calib_quant_{int((1-alpha)*100)}_{uq_method}_{model_str+str(model_id)}.h5")
-            write_data_to_h5(data=pred[0, 0, ...], dtype=np.float16, filename=file, compression="lzf", verbose=True)
+            if quantiles_path is None:
+                quant_path = os.path.join(data_raw_path, city)
+            else:
+                quant_path = Path(os.path.join(quantiles_path, city))
+                quant_path.mkdir(exist_ok=True, parents=True)
+            quant_name = f"quant_{int((1-alpha)*100)}_{uq_method}.h5"
+            #write_data_to_h5(data=pred[0, 0, ...], dtype=np.float16, filename=os.path.join(quant_path, quant_name), compression="lzf", verbose=True)
+            write_data_to_h5(data=quant, dtype=np.float16, filename=os.path.join(quant_path, quant_name), compression="lzf", verbose=True)
 
-        del data, dataloader, pred
+        del data, dataloader, pred, quant
     logging.info(f"Written all calibration set {(1-alpha)*100}% quantiles for {cities=} to file.")

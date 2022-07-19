@@ -1,9 +1,16 @@
 from typing import Tuple
 import torch
+import os
+import glob
+import logging
+import numpy as np
+import pandas as pd
 
 from metrics.pred_interval import coverage, mean_pi_width
 from metrics.calibration import ence, coeff_variation, corr
 from metrics.mse import mse_samples, mse_each_samp, rmse_each_samp
+
+from data.data_layout import CITY_NAMES, CITY_TRAIN_ONLY
 
 
 def get_scores(pred: torch.Tensor, pred_interval: torch.Tensor) -> torch.Tensor:
@@ -49,5 +56,5 @@ def get_scalar_scores(scores: torch.Tensor, device: str) -> Tuple[torch.Tensor, 
     #         ), dim=0)
     #     )
 
-    return (torch.mean(scores[:, :, :, [1, 3, 5, 7]], dim=(1,2,3)),
-            torch.mean(scores[:, :, :, [0, 2, 4, 6]], dim=(1,2,3)))
+    return (torch.mean(scores[:, :, :, [1, 3, 5, 7]], dim=(1,2,3)), # speed
+            torch.mean(scores[:, :, :, [0, 2, 4, 6]], dim=(1,2,3))) # vol

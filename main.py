@@ -87,9 +87,11 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--uq_method", type=str, default="point", required=False, choices=["point", "tta", "ensemble", "bnorm", "patches"],
                         help="Specify UQ method for test set and/or calibration set evaluation.")
     parser.add_argument("--quantiles_path", type=str, default=None, required=False,
-                        help="Quantiles filename in 'data_raw_path/city' directory, e.g. 'quantiles.h5'.")
-    parser.add_argument("--sample_idx_path", type=str, default=None, required=False,
-                        help="Test sample indices filename in 'data_raw_path/city' directory, e.g. 'test_indices.txt'.")
+                        help="Quantiles file path.")
+    parser.add_argument("--test_samp_path", type=str, default=None, required=False,
+                        help="Test sample indices file path.")
+    parser.add_argument("--test_samp_name", type=str, default="test_indices.txt", required=False,
+                        help="Test sample indices file name.")
     return parser
 
 
@@ -232,6 +234,7 @@ def main():
                     dataloader_config=dataloader_config,
                     device=device,
                     parallel_use=parallel_use,
+                    alpha=0.1,
                     **(vars(args)))
         logging.info("Model evaluated.")
     else:
