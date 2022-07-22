@@ -45,7 +45,7 @@ def get_scores_to_table(test_pred_path: str):
                     try:
                         scores = list(np.loadtxt(os.path.join(test_pred_path, "scores", city, filename)))
                     except OSError:
-                        scores = ["N/A" for i in range(13)]
+                        scores = ["N/A" for i in range(14)]
 
                     scores_df = []
                     scores_df.append(city.lower())
@@ -59,7 +59,8 @@ def get_scores_to_table(test_pred_path: str):
                     scores_df.append(str(scores[10]))
                     scores_df.append(str(scores[11]))
                     scores_df.append(str(scores[12]))
-    
+                    scores_df.append(str(scores[13]))
+
                     df_list_of_lists.append(scores_df)
 
             df = pd.DataFrame(df_list_of_lists, columns=colnames)

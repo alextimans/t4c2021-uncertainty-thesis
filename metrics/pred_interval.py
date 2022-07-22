@@ -27,8 +27,12 @@ def get_quantile(pred, n: int = None, alpha: float = 0.1):
 
     n = n if n is not None else pred.shape[0]
     quant = np.ceil((1 - alpha) * (n + 1)) / n
+    # clamp value max to 99% quantile to avoid outlier distortions due to small uncertainties
+    max_clamp = torch.quantile(torch.abs(pred[:, 0, ...] - pred[:, 1, ...]) / pred[:, 2, ...],
+                               0.99, dim=0).max()
 
-    return torch.quantile(torch.abs(pred[:, 0, ...] - pred[:, 1, ...]) / pred[:, 2, ...], quant, dim=0)
+    return torch.quantile((torch.abs(pred[:, 0, ...] - pred[:, 1, ...]) / pred[:, 2, ...]
+                           ).clamp(max=max_clamp), quant, dim=0)
 
 
 def get_pred_interval(pred, quantiles):

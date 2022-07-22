@@ -169,7 +169,7 @@ class PatchUncertainty:
         bsize = dataloader.batch_size
         batch_limit = samp_limit // bsize
         pred = torch.empty( # Pred contains y_true + point pred + uncertainty: (samples, 3, H, W, Ch)
-            size=(batch_limit * bsize, 3, 495, 436, 8), dtype=torch.float32, device="cpu")
+            size=(batch_limit * bsize, 3, 495, 436, 8), dtype=torch.float32, device=device)
 
         with tqdm(dataloader) as tloader:
             for batch, (X, y) in enumerate(tloader):

@@ -118,14 +118,15 @@ def eval_test(model: torch.nn.Module,
             write_data_to_h5(data=pred_interval, dtype=np.float16, compression="lzf", verbose=True,
                              filename=os.path.join(h5_pred_path, f"pi_{uq_method}.h5"))
 
-        scores = get_scores(pred, pred_interval)
+        scores = get_scores(pred, pred_interval, device=device)
         if masked_scores:
             logging.info("Also calculating scores for mask where volume > 0.")
             # which pixels have sum of vol > 0 across sample dimension
             mask_vol = pred[:, 0, :, :, [0, 2, 4, 6]].sum(dim=(0, -1)) > 0
             mask_scores = get_scores(
                 pred[..., mask_vol, :].unsqueeze(dim=-2),
-                pred_interval[..., mask_vol, :].unsqueeze(dim=-2))
+                pred_interval[..., mask_vol, :].unsqueeze(dim=-2),
+                device=device)
             del mask_vol
         del data, pred, pred_interval
 
@@ -138,10 +139,10 @@ def eval_test(model: torch.nn.Module,
                                  filename=os.path.join(h5_pred_path, f"scores_{uq_method}_mask.h5"))
 
         score_names = get_score_names()
-        scalar_speed, scalar_vol = get_scalar_scores(scores, device)
+        scalar_speed, scalar_vol = get_scalar_scores(scores)
         del scores
         if masked_scores:
-            scalar_speed_mask, scalar_vol_mask = get_scalar_scores(mask_scores, device)
+            scalar_speed_mask, scalar_vol_mask = get_scalar_scores(mask_scores)
             del mask_scores
 
         logging.info(f"Scores ==> {score_names}")

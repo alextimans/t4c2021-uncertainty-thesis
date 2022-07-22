@@ -1,6 +1,6 @@
 """
-Uncertainty prediction calibration for regression calculations following 
-the approach and metrics presented in Levi et al. 2020, section 3.
+Uncertainty prediction calibration for regression calculations, 
+partially following the approach and metrics presented in Levi et al. 2020, section 3.
 """
 
 import torch
@@ -11,7 +11,7 @@ def corr(pred):
     """
     Receives: prediction tensor (samples, 2, 6, H, W, Ch), where 2nd dim '2'
     is error metric (0), uncertainty measure (1).
-    Returns: pearson correlation coefficient across the sample dimension as
+    Returns: Pearson correlation coefficient across the sample dimension as
     (6, H, W, Ch).
     Formula: sum[(x - x_mean)(y - y_mean)] * 1/sqrt(sum((x - x_mean)^2)) * 1/sqrt(sum((y - y_mean)^2))
     """
@@ -19,11 +19,43 @@ def corr(pred):
     return (torch.sum(
                 (pred[:, 0, ...] - torch.mean(pred[:, 0, ...], dim=0)) * (pred[:, 1, ...] - torch.mean(pred[:, 1, ...], dim=0)), dim=0
                 ) * torch.rsqrt(
-                    torch.sum((pred[:, 0, ...] - torch.mean(pred[:, 0, ...], dim=0))**2, dim=0).clamp(min=1e-4)
+                    torch.sum((pred[:, 0, ...] - torch.mean(pred[:, 0, ...], dim=0))**2, dim=0).clamp(min=1e-10)
                 ) * torch.rsqrt(
-                    torch.sum((pred[:, 1, ...] - torch.mean(pred[:, 1, ...], dim=0))**2, dim=0).clamp(min=1e-4)
+                    torch.sum((pred[:, 1, ...] - torch.mean(pred[:, 1, ...], dim=0))**2, dim=0).clamp(min=1e-10)
                 )
             )
+
+
+def spearman_corr(error, unc, device):
+
+    """
+    Receives: error tensor (samples, H, W, Ch) containing error values,
+    unc tensor (samples, H, W, Ch) containing uncertainty values, device.
+    Returns: Spearman correlation coefficient across the sample dimension
+    as tensor (H, W, Ch).
+    Formula: obtain rank values across sample dimension, then compute Pearson corr.
+
+    Note: Very inefficient code for current lack of a better solution.
+    torch.argsort only accepts sorting across single dimensions.
+    """
+
+    assert error.shape[1:] == unc.shape[1:]
+    s = tuple(error.shape)
+
+    error_rank = torch.empty(size=s, dtype=torch.int, device=device)
+    unc_rank = torch.empty(size=s, dtype=torch.int, device=device)
+
+    for i in range(s[1]):
+        for j in range(s[2]):
+            for c in range(s[3]):
+
+                error_tmp = error[:, i, j, c].argsort()
+                error_rank[error_tmp, i, j, c] = torch.arange(s[0]).int()
+
+                unc_tmp = unc[:, i, j, c].argsort()
+                unc_rank[unc_tmp, i, j, c] = torch.arange(s[0]).int()
+
+    return corr(torch.stack((error_rank.float(), unc_rank.float()), dim=1))
 
 
 def ence(pred):
@@ -40,7 +72,13 @@ def ence(pred):
    Then ENCE = mean(|std - rse| / std), mean over samples.
    """
 
-   return torch.mean(torch.abs(pred[:, 2, ...] - torch.sqrt((pred[:, 0, ...] - pred[:, 1, ...])**2)) / pred[:, 2, ...], dim=0)
+   # clamp value max to 99% quantile to avoid outlier distortions due to small uncertainties
+   max_clamp = torch.quantile(torch.abs(pred[:, 2, ...] - torch.sqrt((pred[:, 0, ...] - pred[:, 1, ...])**2)) / pred[:, 2, ...],
+                              0.99, dim=0).max()
+
+   return torch.mean(
+       (torch.abs(pred[:, 2, ...] - torch.sqrt((pred[:, 0, ...] - pred[:, 1, ...])**2)) / pred[:, 2, ...]
+        ).clamp(max=max_clamp), dim=0)
 
 
 def coeff_variation(pred):
@@ -93,4 +131,16 @@ def get_rmv_rmse(pred, bins: int = 10):
 #                 per_cell_calib[i, j, c], _ = pearsonr(pred[:, 0, i, j, c], pred[:, 1, i, j, c])
 # 
 #     return per_cell_calib
+# 
+# from scipy.stats import spearmanr
+# def corr2(pred): # inputted (samples, 2, H, W, Ch)
+# 
+#     per_cell_calib = torch.empty(tuple(pred.shape[2:]))
+#     for i in range(per_cell_calib.shape[0]):
+#         for j in range(per_cell_calib.shape[1]):
+#             for c in range(per_cell_calib.shape[2]):
+#                 per_cell_calib[i, j, c], _ = spearmanr(pred[:, 0, i, j, c], pred[:, 1, i, j, c])#, nan_policy="omit")
+# 
+#     return per_cell_calib
+# 
 # =============================================================================

@@ -1,19 +1,12 @@
 from typing import Tuple
 import torch
-import os
-import glob
-import logging
-import numpy as np
-import pandas as pd
 
 from metrics.pred_interval import coverage, mean_pi_width
-from metrics.calibration import ence, coeff_variation, corr
+from metrics.calibration import ence, coeff_variation, corr, spearman_corr
 from metrics.mse import mse_samples, mse_each_samp, rmse_each_samp
 
-from data.data_layout import CITY_NAMES, CITY_TRAIN_ONLY
 
-
-def get_scores(pred: torch.Tensor, pred_interval: torch.Tensor) -> torch.Tensor:
+def get_scores(pred: torch.Tensor, pred_interval: torch.Tensor, device: str) -> torch.Tensor:
 
     # tensor (#metrics, H, W, Ch) containing all the metrics across the sample dimension
     return (
@@ -32,16 +25,17 @@ def get_scores(pred: torch.Tensor, pred_interval: torch.Tensor) -> torch.Tensor:
             coverage(torch.cat((pred[:, 0, ...].unsqueeze(dim=1), pred_interval), dim=1)), # empirical PI coverage
             ence(pred), # ENCE
             coeff_variation(pred[:, 2, ...]), # coeff. of variation uncertainty
-            corr(torch.stack((rmse_each_samp(pred[:, :2, ...]), pred[:, 2, ...]), dim=1)) # corr RMSE-uncertainty
+            corr(torch.stack((rmse_each_samp(pred[:, :2, ...]), pred[:, 2, ...]), dim=1)), # corr RMSE-uncertainty
+            spearman_corr(rmse_each_samp(pred[:, :2, ...]), pred[:, 2, ...], device) # spearman corr RMSE-uncertainty
             ), dim=0)
         )
 
 
 def get_score_names() -> str:
-    return "[mean_gt, mean_pred, mean_unc, mean_mse, std_gt, std_pred, std_unc, std_mse, PI_width, cover, ENCE, CoV, corr]"
+    return "[mean_gt, mean_pred, mean_unc, mean_mse, std_gt, std_pred, std_unc, std_mse, PI_width, cover, ENCE, CoV, corr, sp_corr]"
 
 
-def get_scalar_scores(scores: torch.Tensor, device: str) -> Tuple[torch.Tensor, torch.Tensor]:
+def get_scalar_scores(scores: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
     # taking means over (H, W, Ch) to return (#metrics) scalars
 
