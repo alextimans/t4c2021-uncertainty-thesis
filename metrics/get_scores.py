@@ -50,5 +50,5 @@ def get_scalar_scores(scores: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]
     #         ), dim=0)
     #     )
 
-    return (torch.mean(scores[:, :, :, [1, 3, 5, 7]], dim=(1,2,3)), # speed
-            torch.mean(scores[:, :, :, [0, 2, 4, 6]], dim=(1,2,3))) # vol
+    return (torch.mean(scores[..., [1, 3, 5, 7]], dim=(1,2,3)), # speed
+            torch.mean(scores[..., [0, 2, 4, 6]], dim=(1,2,3))) # vol

@@ -4,6 +4,7 @@ partially following the approach and metrics presented in Levi et al. 2020, sect
 """
 
 import torch
+import numpy as np
 
 
 def corr(pred):
@@ -50,10 +51,10 @@ def spearman_corr(error, unc, device):
             for c in range(s[3]):
 
                 error_tmp = error[:, i, j, c].argsort()
-                error_rank[error_tmp, i, j, c] = torch.arange(s[0]).int()
+                error_rank[error_tmp, i, j, c] = torch.arange(s[0]).int().to(device)
 
                 unc_tmp = unc[:, i, j, c].argsort()
-                unc_rank[unc_tmp, i, j, c] = torch.arange(s[0]).int()
+                unc_rank[unc_tmp, i, j, c] = torch.arange(s[0]).int().to(device)
 
     return corr(torch.stack((error_rank.float(), unc_rank.float()), dim=1))
 
@@ -73,8 +74,9 @@ def ence(pred):
    """
 
    # clamp value max to 99% quantile to avoid outlier distortions due to small uncertainties
-   max_clamp = torch.quantile(torch.abs(pred[:, 2, ...] - torch.sqrt((pred[:, 0, ...] - pred[:, 1, ...])**2)) / pred[:, 2, ...],
-                              0.99, dim=0).max()
+   # works with np.quantile, not with torch.quantile because "tensor too large"
+   max_clamp = torch.tensor(np.quantile((torch.abs(pred[:, 2, ...] - torch.sqrt((pred[:, 0, ...] - pred[:, 1, ...])**2)) / pred[:, 2, ...]).cpu().numpy()
+                           , 0.99), dtype=torch.float32)
 
    return torch.mean(
        (torch.abs(pred[:, 2, ...] - torch.sqrt((pred[:, 0, ...] - pred[:, 1, ...])**2)) / pred[:, 2, ...]

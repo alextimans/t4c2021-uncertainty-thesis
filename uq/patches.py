@@ -12,14 +12,13 @@ from tqdm import tqdm
 class PatchUncertainty:
     # def __init__(self, model_path, static_map_arr=None, device="cuda",
     #              radius=50, stride=30, model_str="unet_patches", **kwargs):
-    def __init__(self, radius: int, stride: int,
-                 static_map_arr = None):
+    def __init__(self, radius: int, stride: int, static_map_arr = None):
         self.radius = radius
         self.stride = stride
+        self.static_map = static_map_arr
         # self.device = device
         # self.model_str = model_str
         # self.pre_transform = configs[model_str][]
-        self.static_map = static_map_arr
         # self.model = self.load_model(model_path,
         #                              use_static_map=(self.static_map is not None))
         # self.model = self.model.to(device)
@@ -56,7 +55,7 @@ class PatchUncertainty:
     def create_patches(self, one_hour, radius, stride, static_map):
     
         tlen, xlen, ylen, chlen = one_hour.shape
-        # print(xlen, (xlen - 2*radius), stride, (xlen - 2*radius)//stride)
+        # print(xlen, (xlen - 2*radius), stride, (xlen - 2*radius) // stride)
         nr_in_x = (xlen - 2 * radius) // stride + 2
         nr_in_y = (ylen - 2 * radius) // stride + 2
     
@@ -106,14 +105,13 @@ class PatchUncertainty:
 
     #     return out_patch, avg_arr, index_arr
 
-    def predict_patches(self, inp_patch, model, device, internal_batch_size = 40):
+    def predict_patches(self, inp_patch, model, device, internal_batch_size = 50):
         
         """Pass all patches through the model in batches"""
 
         n_samples = inp_patch.shape[0]
         img_len = inp_patch.shape[2]
         out = torch.zeros(n_samples, 48, img_len, img_len)
-        # out = torch.zeros_like(inp_patch)
         e_b = 0
 
         for j in range(n_samples // internal_batch_size):
@@ -139,10 +137,10 @@ class PatchUncertainty:
             (start_x, end_x, start_y, end_y) = tuple(index_arr[i].astype(int).tolist())
             prediction[:, start_x:end_x, start_y:end_y] += out_patch[i]
     
-        # expand_avg_arr = np.tile(np.expand_dims(avg_arr, 2), 8)
-        # avg_prediction = prediction / np.tile(np.expand_dims(avg_arr, 2), 8)
+        expand_avg_arr = np.tile(np.expand_dims(avg_arr, 2), 8)
+        # avg_prediction = prediction / expand_avg_arr
     
-        return prediction / np.tile(np.expand_dims(avg_arr, 2), 8)
+        return prediction / expand_avg_arr
 
     def get_std(self, out_patch, means, avg_arr, index_arr):
         xlen, ylen = avg_arr.shape
@@ -155,10 +153,10 @@ class PatchUncertainty:
             (start_x, end_x, start_y, end_y) = tuple(index_arr[i].astype(int).tolist())
             std_prediction[:, start_x:end_x, start_y:end_y] += (out_patch[i] - means[:, start_x:end_x, start_y:end_y]) ** 2
     
-        # expand_nr_samples_arr = np.tile(np.expand_dims(avg_arr, 2), 8)
-        # avg_prediction = np.sqrt(std_prediction / np.tile(np.expand_dims(avg_arr, 2), 8))
+        expand_avg_arr = np.tile(np.expand_dims(avg_arr, 2), 8)
+        # avg_prediction = np.sqrt(std_prediction / expand_avg_arr)
     
-        return np.sqrt(std_prediction / np.tile(np.expand_dims(avg_arr, 2), 8))
+        return np.sqrt(std_prediction / expand_avg_arr)
 
     @torch.no_grad()
     def __call__(self, device, loss_fct, dataloader, model, samp_limit,
@@ -177,7 +175,6 @@ class PatchUncertainty:
                     break
 
                 # X: tensor (1, 12, 495, 436, 8), y: tensor (1, 6, 495, 436, 8)
-                # X, y = X.to(device, non_blocking=parallel_use), y.to(device, non_blocking=parallel_use)
 
                 # inp_patch: tensor (patch_x*patch_y, 12*Ch, 2*radius+pad, 2*radius+pad) e.g. (15*13, 12*8, 112, 112)
                 # avg_arr: np.array (495, 436), index_arr: np.array (15*13, 4)
@@ -187,7 +184,7 @@ class PatchUncertainty:
                 # out: tensor (15*13, 6*Ch, 112, 112)
                 out = self.predict_patches(inp_patch, model, device)
 
-                # out_patch: tensor (15*13, 6, 100, 100, 8)
+                # out_patch: np.array (15*13, 6, 100, 100, 8)
                 out_patch = post_transform(out).numpy()
                 del inp_patch, out
 
