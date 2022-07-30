@@ -3,7 +3,6 @@ import sys
 import logging
 import glob
 from pathlib import Path
-from typing import Optional
 import argparse
 
 import numpy as np
