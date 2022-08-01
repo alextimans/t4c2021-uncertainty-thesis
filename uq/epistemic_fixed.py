@@ -6,13 +6,17 @@ from pathlib import Path
 import argparse
 
 import numpy as np
+from scipy.stats import gaussian_kde
+from scipy.stats import combine_pvalues
+
 import torch
 from torch.utils.data import DataLoader, Subset
+from tqdm import tqdm
 
 from data.dataset import T4CDataset
 from model.configs import configs
 from model.checkpointing import load_torch_model_from_checkpoint
-from util.h5_util import write_data_to_h5
+from util.h5_util import write_data_to_h5, load_h5_file
 from util.logging import t4c_apply_basic_logging_config
 from util.get_device import get_device
 from util.set_seed import set_seed
@@ -48,10 +52,13 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fix_samp_idx", nargs=3, type=int, default=[None, None, None], required=False,
                         help="Fixed sample indices for time frame across training data per city (Bangkok, Barcelona, Moscow) in order.")
 
+    parser.add_argument("--out_bound", type=float, default=0.01, required=False,
+                        help="Outlier decision boundary: if p-value < out_bound we consider value an outlier.")
+
     return parser
 
 
-def epistemic_hist(model: torch.nn.Module,
+def test_pred(model: torch.nn.Module,
                 cities: list,
                 fix_samp_idx: list,
                 batch_size: int,
@@ -84,11 +91,89 @@ def epistemic_hist(model: torch.nn.Module,
     
     for i, city in enumerate(cities):
     
+        test_file_paths = sorted(glob.glob(f"{data_raw_path}/{city}/test/*8ch.h5", recursive=True))
+        logging.info(f"{len(test_file_paths)} test files extracted from {data_raw_path}/{city}/test/...")
+
+        if test_pred_path is None:
+            raise AttributeError
+        else:
+            res_path = Path(os.path.join(test_pred_path, city))
+            res_path.mkdir(exist_ok=True, parents=True)
+        
+        data = T4CDataset(root_dir=data_raw_path,
+                          file_filter=test_file_paths,
+                          **dataset_config)
+
+        # idx of fixed sample index for each file
+        logging.info(f"Using fixed sample index {fix_samp_idx[i]} for {city}.")
+        sub_idx = [fix_samp_idx[i]+t*288 for t in range(len(test_file_paths))]
+
+        dataloader = DataLoader(dataset=Subset(data, sub_idx),
+                                batch_size=batch_size,
+                                shuffle=False,
+                                num_workers=num_workers,
+                                pin_memory=parallel_use,
+                                **dataloader_config)
+
+        pred, loss_city = uq_method_obj(device=device, # (samples, 3, H, W, Ch) torch.float32
+                                       loss_fct=loss_fct,
+                                       dataloader=dataloader,
+                                       model=model,
+                                       samp_limit=len(sub_idx),
+                                       parallel_use=parallel_use,
+                                       post_transform=post_transform)
+
+        logging.info(f"Obtained test set preds with uncertainty {uq_method} as {pred.shape, pred.dtype}.")
+        if pred_to_file:
+            write_data_to_h5(data=pred, dtype=np.float16, compression="lzf", verbose=True,
+                             filename=os.path.join(res_path, f"pred_{uq_method}.h5"))
+        del data, dataloader, pred
+
+        logging.info(f"Evaluation via {uq_method} finished for {city}.")
+    logging.info(f"Evaluation via {uq_method} finished for all cities in {cities}.")
+
+
+def find_outliers(model: torch.nn.Module,
+                cities: list,
+                fix_samp_idx: list,
+                batch_size: int,
+                num_workers: int,
+                dataset_config: dict,
+                dataloader_config: dict,
+                model_str: str,
+                parallel_use: bool,
+                data_raw_path: str,
+                test_pred_path: str,
+                device: str,
+                uq_method: str,
+                save_checkpoint: str,
+                out_bound: float,
+                pred_to_file: bool = True,
+                pval_to_file: bool = True,
+                out_to_file: bool = True,
+                **kwargs):
+
+    logging.info("Running %s..." %(sys._getframe().f_code.co_name)) # Current fct name
+    
+    model = model.to(device)
+    loss_fct = torch.nn.functional.mse_loss
+    uq_method_obj = configs[model_str]["uq_method"][uq_method] # Uncertainty object
+    post_transform = configs[model_str]["post_transform"][uq_method]
+
+    if uq_method == "ensemble":
+        uq_method_obj.load_ensemble(device, save_checkpoint, configs[model_str]["model_class"], configs[model_str]["model_config"])
+    elif uq_method == "bnorm":
+        uq_method_obj.load_train_data(data_raw_path, configs[model_str]["dataset_config"]["point"])
+
+    logging.info(f"Evaluating '{model_str}' on '{device}' for {cities} with {uq_method_obj.__class__}.")
+    
+    for i, city in enumerate(cities):
+    
         train_file_paths = sorted(glob.glob(f"{data_raw_path}/{city}/train/*8ch.h5", recursive=True))
         logging.info(f"{len(train_file_paths)} train files extracted from {data_raw_path}/{city}/train/...")
 
         if test_pred_path is None:
-            raise(AttributeError)
+            raise AttributeError
         else:
             res_path = Path(os.path.join(test_pred_path, city))
             res_path.mkdir(exist_ok=True, parents=True)
@@ -108,7 +193,7 @@ def epistemic_hist(model: torch.nn.Module,
                                 pin_memory=parallel_use,
                                 **dataloader_config)
 
-        pred, loss_city = uq_method_obj(device=device, # (samples, 3, H, W, Ch) torch.float32
+        pred_tr, loss_city = uq_method_obj(device=device, # (samples, 3, H, W, Ch) torch.float32
                                        loss_fct=loss_fct,
                                        dataloader=dataloader,
                                        model=model,
@@ -116,13 +201,94 @@ def epistemic_hist(model: torch.nn.Module,
                                        parallel_use=parallel_use,
                                        post_transform=post_transform)
 
-        logging.info(f"Obtained predictions with uncertainty {uq_method} as {pred.shape, pred.dtype}.")
+        logging.info(f"Obtained train set preds with uncertainty {uq_method} as {pred_tr.shape, pred_tr.dtype}.")
         if pred_to_file:
-            write_data_to_h5(data=pred, dtype=np.float16, compression="lzf", verbose=True,
-                             filename=os.path.join(res_path, f"pred_{uq_method}.h5"))
+            write_data_to_h5(data=pred_tr, dtype=np.float16, compression="lzf", verbose=True,
+                             filename=os.path.join(res_path, f"pred_tr_{uq_method}.h5"))
+        del data, dataloader
 
-        logging.info(f"Evaluation via {uq_method} finished for {city}.")
-    logging.info(f"Evaluation via {uq_method} finished for all cities in {cities}.")
+        pred_path = os.path.join(test_pred_path, city, f"pred_{uq_method}.h5")
+        pred = load_h5_file(pred_path, dtype=torch.float16)
+
+        # Cell-level uncertainty KDE Gaussian fit + p-values
+        pval = get_pvalues(unc_tr=pred_tr[:, 2, ...].to("cpu"),
+                           unc=pred[:, 2, ...].to("cpu"))
+        logging.info(f"Obtained tensor of p-values as {pval.shape, pval.dtype}.")
+        if pval_to_file:
+            write_data_to_h5(data=pval, dtype=np.float16, compression="lzf", verbose=True,
+                             filename=os.path.join(res_path, f"pval_{uq_method}.h5"))
+        del pred_tr, pred
+
+        # p-value aggregation and outlier labelling (channel-level, pixel-level)
+        out = aggregate_pvalues(pval, out_bound)
+        logging.info(f"Obtained tensor of outlier labels as {out.shape, out.dtype}.")
+        if out_to_file:
+            write_data_to_h5(data=out, dtype=np.float16, compression="lzf", verbose=True,
+                             filename=os.path.join(res_path, f"out_{uq_method}.h5"))
+        del pval, out
+
+        logging.info(f"Outlier detection via {uq_method} finished for {city}.")
+    logging.info(f"Outlier detection via {uq_method} finished for all cities in {cities}.")
+
+
+def get_pvalues(unc_tr, unc):
+    samp, p_i, p_j, channels = tuple(unc.shape)
+    # Tensor containing cell-level p-values
+    # for test set uncertainty vs. train set uncertainty KDE fit
+    pval = torch.empty(size=(samp, p_i, p_j, channels), dtype=torch.float16, device="cpu")
+
+    for i in tqdm(range(p_i), desc="Pixel height"):
+        for j in range(p_j):
+            for ch in range(channels):
+
+                cell_tr = unc_tr[:, i, j, ch]
+                cell = unc[:, i, j, ch]
+                kde = gaussian_kde(cell_tr, bw_method="scott")
+                med = cell_tr.median()
+
+                for s in range(samp):
+                    u = cell[s]
+                    if u >= med:
+                        pval[s, i, j, ch] = kde.integrate_box_1d(u, np.inf)
+                    elif u < med:
+                        pval[s, i, j, ch] = kde.integrate_box_1d(-np.inf, u)
+
+                del cell_tr, cell, kde
+    return pval
+
+
+def aggregate_pvalues(pval, out_bound: float):
+    samp, p_i, p_j, _ = tuple(pval.shape)
+    # Boolean tensor containing outlier labelling
+    out = torch.empty(size=(samp, p_i, p_j, 3), dtype=torch.bool, device="cpu")
+
+    for i in tqdm(range(p_i), desc="Pixel height"):
+        for j in range(p_j):
+            for s in range(samp):
+
+                out_ch = aggregate_channels(pval[s, i, j, :], out_bound)
+                out_pix = aggregate_pixel(out_ch)
+                # 1: Outlier vol, 2: Outlier speed, 3: Outlier pixel
+                out[s, i, j, :] = torch.cat((out_ch, out_pix))
+    return out
+
+
+def aggregate_channels(pval, out_bound: float):
+    # Channel group is outlier if combined p-value outside outlier bound
+    p_vol_agg = combine_pvalues(pval[[0, 2, 4, 6]], method="fisher")
+    p_sp_agg = combine_pvalues(pval[[1, 3, 5, 7]], method="fisher")
+
+    out_vol = True if p_vol_agg <= out_bound else False
+    out_sp = True if p_sp_agg <= out_bound else False
+
+    return torch.tensor([out_vol, out_sp])
+
+
+def aggregate_pixel(out_ch):
+    # Pixel is outlier if at least one channel group is outlier
+    out_pix = True if out_ch.sum() > 0 else False
+
+    return torch.tensor([out_pix])
 
 
 def main():
@@ -169,13 +335,22 @@ def main():
     else:
         logging.info("No model checkpoint given.")
 
-    epistemic_hist(model=model,
+    test_pred(model=model,
                    cities=["BANGKOK", "BARCELONA", "MOSCOW"],
                    dataset_config=dataset_config,
                    dataloader_config=dataloader_config,
                    parallel_use=parallel_use,
                    device=device,
                    **(vars(args)))
+
+    find_outliers(model=model,
+                   cities=["BANGKOK", "BARCELONA", "MOSCOW"],
+                   dataset_config=dataset_config,
+                   dataloader_config=dataloader_config,
+                   parallel_use=parallel_use,
+                   device=device,
+                   **(vars(args)))
+
     logging.info("Main finished.")
 
 
