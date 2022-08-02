@@ -7,8 +7,9 @@ import argparse
 
 import numpy as np
 from scipy.stats import gaussian_kde
-from scipy.stats import combine_pvalues
-from statsmodels.distributions.empirical_distribution import ECDF
+# from scipy.stats import combine_pvalues
+# from statsmodels.distributions.empirical_distribution import ECDF
+from scipy.stats.mstats import mquantiles
 
 import torch
 from torch.utils.data import DataLoader, Subset
@@ -154,7 +155,7 @@ def detect_outliers(model: torch.nn.Module,
                 save_checkpoint: str,
                 out_bound: float,
                 pred_to_file: bool = True,
-                pval_to_file: bool = True,
+                out_cell_to_file: bool = True,
                 out_to_file: bool = True,
                 **kwargs):
 
@@ -217,16 +218,16 @@ def detect_outliers(model: torch.nn.Module,
         pred_path = os.path.join(test_pred_path, city, f"pred_{uq_method}.h5")
         unc = load_h5_file(pred_path, dtype=torch.float32)[:, 2, ...].to("cpu") # Test set uncertainties
 
-        # Cell-level uncertainty KDE Gaussian fit + p-values
-        pval = get_pvalues(unc_tr=unc_tr, unc=unc, device=device)
-        logging.info(f"Obtained tensor of p-values as {pval.shape, pval.dtype}.")
-        if pval_to_file:
-            write_data_to_h5(data=pval, dtype=np.float16, compression="lzf", verbose=True,
-                             filename=os.path.join(res_path, f"pval_{uq_method}.h5"))
+        # Cell-level uncertainty KDE Gaussian fit + outlier label
+        out_cell = get_outliers(unc_tr=unc_tr, unc=unc, out_bound=out_bound, device=device)
+        logging.info(f"Obtained tensor of cell outliers as {out_cell.shape, out_cell.dtype}.")
+        if out_cell_to_file:
+            write_data_to_h5(data=out_cell, dtype=bool, compression="lzf", verbose=True,
+                             filename=os.path.join(res_path, f"out_cell_{uq_method}.h5"))
         del unc_tr, unc
 
-        # p-value aggregation and outlier labelling (channel-level, pixel-level)
-        out = aggregate_pvalues(pval, out_bound, device)
+        # outlier label aggregation (channel-level, pixel-level)
+        out = aggregate_outliers(out_cell, out_bound, device)
         logging.info(f"Obtained tensor of outlier labels as {out.shape, out.dtype}.")
         if out_to_file:
             write_data_to_h5(data=out, dtype=bool, compression="lzf", verbose=True,
@@ -234,22 +235,18 @@ def detect_outliers(model: torch.nn.Module,
 
         # Outlier detection stats
         outlier_stats(out)
-        del pval, out
+        del out_cell, out
 
         logging.info(f"Outlier detection via {uq_method} finished for {city}.")
     logging.info(f"Outlier detection via {uq_method} finished for all cities in {cities}.")
 
-    # from statsmodels.distributions.empirical_distribution import ECDF
-    # sfit = kde.resample(100000, seed=42).reshape(-1)
-    # ecdf = ECDF(sfit)
-    # pval = 1 - ecdf([EPISTEMIC_UNC array])
 
-
-def get_pvalues(unc_tr, unc, device: str):
+def get_outliers(unc_tr, unc, out_bound: float, device: str):
     samp, p_i, p_j, channels = tuple(unc.shape)
-    # Tensor containing cell-level p-values
+    # Tensor containing cell-level outlier labels
     # for test set uncertainty vs. train set uncertainty KDE fit
-    pval = torch.empty(size=(samp, p_i, p_j, channels), dtype=torch.float32, device="cpu")
+    out_cell = torch.empty(size=(samp, p_i, p_j, channels), dtype=torch.bool, device="cpu")
+    logging.info(f"Using outlier decision boundary {out_bound=}.")
 
     for i in tqdm(range(p_i), desc="Pixel height"):
         for j in range(p_j):
@@ -260,23 +257,18 @@ def get_pvalues(unc_tr, unc, device: str):
 
                 kde = gaussian_kde(cell_tr, bw_method="scott")
                 sfit = kde.resample(size=100000).reshape(-1)
-                med = np.median(sfit)
 
-                # Empirical CDF of KDE fit from large sample for support set coverage
-                ecdf = ECDF(sfit)
-                p = ecdf(cell) # array of CDF prob values across sample dim
-                p[cell > med] = 1 - p[cell > med]
-                pval[:, i, j, ch] = torch.tensor(p, dtype=torch.float32)
+                # cell level outlier label
+                q_l, q_h = mquantiles(sfit, prob=[out_bound, 1-out_bound])
+                out_cell[:, i, j, ch] = torch.from_numpy((cell <= q_l) + (cell >= q_h))
 
-                del cell_tr, cell, kde, sfit, ecdf
+                del cell_tr, cell, kde, sfit
 
-    assert pval.max() <= 1 and pval.min() >= 0, "p-values not in [0, 1]"
-    return pval
+    return out_cell
 
 
-def aggregate_pvalues(pval, out_bound: float, device: str):
-    logging.info(f"Using outlier decision boundary {out_bound=}.")
-    samp, p_i, p_j, _ = tuple(pval.shape)
+def aggregate_outliers(out_cell, out_bound: float, device: str):
+    samp, p_i, p_j, _ = tuple(out_cell.shape)
     # Boolean tensor containing outlier labelling
     out = torch.empty(size=(samp, p_i, p_j, 3), dtype=torch.bool, device="cpu")
 
@@ -284,20 +276,17 @@ def aggregate_pvalues(pval, out_bound: float, device: str):
         for j in range(p_j):
             for s in range(samp):
 
-                out_ch = aggregate_channels(pval[s, i, j, :], out_bound)
+                out_ch = aggregate_channels(out_cell[s, i, j, :], out_bound)
                 out_pix = aggregate_pixel(out_ch)
                 # 1: Outlier vol, 2: Outlier speed, 3: Outlier pixel
                 out[s, i, j, :] = torch.cat((out_ch, out_pix))
     return out
 
 
-def aggregate_channels(pval, out_bound: float):
-    # Channel group is outlier if combined p-value outside outlier bound
-    p_vol_agg = combine_pvalues(pval[[0, 2, 4, 6]], method="fisher")
-    p_sp_agg = combine_pvalues(pval[[1, 3, 5, 7]], method="fisher")
-
-    out_vol = True if p_vol_agg <= out_bound else False
-    out_sp = True if p_sp_agg <= out_bound else False
+def aggregate_channels(out_cell, out_bound: float):
+    # Channel group is outlier if at least 2 channels labelled outlier
+    out_vol = True if out_cell[[0, 2, 4, 6]].sum() >= 2 else False
+    out_sp = True if out_cell[[1, 3, 5, 7]].sum() >= 2 else False
 
     return torch.tensor([out_vol, out_sp])
 

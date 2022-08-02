@@ -8,7 +8,6 @@ import argparse
 import numpy as np
 from scipy.stats import gaussian_kde
 from scipy.stats import combine_pvalues
-from statsmodels.distributions.empirical_distribution import ECDF
 
 import torch
 from torch.utils.data import DataLoader, Subset
@@ -212,10 +211,10 @@ def detect_outliers(model: torch.nn.Module,
                              filename=os.path.join(res_path, f"pred_tr_{uq_method}.h5"))
         del data, dataloader
 
-        unc_tr = pred_tr[:, 2, ...].to("cpu") # Train set uncertainties
+        unc_tr = pred_tr[:, 2, ...] # Train set uncertainties
         del pred_tr
         pred_path = os.path.join(test_pred_path, city, f"pred_{uq_method}.h5")
-        unc = load_h5_file(pred_path, dtype=torch.float32)[:, 2, ...].to("cpu") # Test set uncertainties
+        unc = load_h5_file(pred_path, dtype=torch.float32)[:, 2, ...].to(device) # Test set uncertainties
 
         # Cell-level uncertainty KDE Gaussian fit + p-values
         pval = get_pvalues(unc_tr=unc_tr, unc=unc, device=device)
@@ -239,36 +238,34 @@ def detect_outliers(model: torch.nn.Module,
         logging.info(f"Outlier detection via {uq_method} finished for {city}.")
     logging.info(f"Outlier detection via {uq_method} finished for all cities in {cities}.")
 
-    # from statsmodels.distributions.empirical_distribution import ECDF
-    # sfit = kde.resample(100000, seed=42).reshape(-1)
-    # ecdf = ECDF(sfit)
-    # pval = 1 - ecdf([EPISTEMIC_UNC array])
-
 
 def get_pvalues(unc_tr, unc, device: str):
     samp, p_i, p_j, channels = tuple(unc.shape)
     # Tensor containing cell-level p-values
     # for test set uncertainty vs. train set uncertainty KDE fit
-    pval = torch.empty(size=(samp, p_i, p_j, channels), dtype=torch.float32, device="cpu")
+    pval = torch.empty(size=(samp, p_i, p_j, channels), dtype=torch.float32, device=device)
 
     for i in tqdm(range(p_i), desc="Pixel height"):
         for j in range(p_j):
             for ch in range(channels):
 
-                cell_tr = unc_tr[:, i, j, ch]
-                cell = unc[:, i, j, ch]
-
+                cell_tr = unc_tr[:, i, j, ch].cpu()
+                cell = unc[:, i, j, ch].cpu()
                 kde = gaussian_kde(cell_tr, bw_method="scott")
-                sfit = kde.resample(size=100000).reshape(-1)
-                med = np.median(sfit)
+                med =  np.median(kde.resample(size=10000))
 
-                # Empirical CDF of KDE fit from large sample for support set coverage
-                ecdf = ECDF(sfit)
-                p = ecdf(cell) # array of CDF prob values across sample dim
-                p[cell > med] = 1 - p[cell > med]
-                pval[:, i, j, ch] = torch.tensor(p, dtype=torch.float32)
+                for s in range(samp):
+                    u = cell[s]
+                    if u >= med:
+                        pval[s, i, j, ch] = torch.tensor(
+                            kde.integrate_box_1d(u, np.inf),
+                            dtype=torch.float32).to(device)
+                    elif u < med:
+                        pval[s, i, j, ch] = torch.tensor(
+                            kde.integrate_box_1d(-np.inf, u),
+                            dtype=torch.float32).to(device)
 
-                del cell_tr, cell, kde, sfit, ecdf
+                del cell_tr, cell, kde
 
     assert pval.max() <= 1 and pval.min() >= 0, "p-values not in [0, 1]"
     return pval
@@ -278,7 +275,7 @@ def aggregate_pvalues(pval, out_bound: float, device: str):
     logging.info(f"Using outlier decision boundary {out_bound=}.")
     samp, p_i, p_j, _ = tuple(pval.shape)
     # Boolean tensor containing outlier labelling
-    out = torch.empty(size=(samp, p_i, p_j, 3), dtype=torch.bool, device="cpu")
+    out = torch.empty(size=(samp, p_i, p_j, 3), dtype=torch.bool, device=device)
 
     for i in tqdm(range(p_i), desc="Pixel height"):
         for j in range(p_j):

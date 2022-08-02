@@ -8,7 +8,6 @@ import argparse
 import numpy as np
 from scipy.stats import gaussian_kde
 from scipy.stats import combine_pvalues
-from statsmodels.distributions.empirical_distribution import ECDF
 
 import torch
 from torch.utils.data import DataLoader, Subset
@@ -239,11 +238,6 @@ def detect_outliers(model: torch.nn.Module,
         logging.info(f"Outlier detection via {uq_method} finished for {city}.")
     logging.info(f"Outlier detection via {uq_method} finished for all cities in {cities}.")
 
-    # from statsmodels.distributions.empirical_distribution import ECDF
-    # sfit = kde.resample(100000, seed=42).reshape(-1)
-    # ecdf = ECDF(sfit)
-    # pval = 1 - ecdf([EPISTEMIC_UNC array])
-
 
 def get_pvalues(unc_tr, unc, device: str):
     samp, p_i, p_j, channels = tuple(unc.shape)
@@ -257,18 +251,21 @@ def get_pvalues(unc_tr, unc, device: str):
 
                 cell_tr = unc_tr[:, i, j, ch]
                 cell = unc[:, i, j, ch]
-
                 kde = gaussian_kde(cell_tr, bw_method="scott")
-                sfit = kde.resample(size=100000).reshape(-1)
-                med = np.median(sfit)
+                med =  np.median(kde.resample(size=10000))
 
-                # Empirical CDF of KDE fit from large sample for support set coverage
-                ecdf = ECDF(sfit)
-                p = ecdf(cell) # array of CDF prob values across sample dim
-                p[cell > med] = 1 - p[cell > med]
-                pval[:, i, j, ch] = torch.tensor(p, dtype=torch.float32)
+                for s in range(samp):
+                    u = cell[s]
+                    if u >= med:
+                        pval[s, i, j, ch] = torch.tensor(
+                            kde.integrate_box_1d(u, np.inf),
+                            dtype=torch.float32)
+                    elif u < med:
+                        pval[s, i, j, ch] = torch.tensor(
+                            kde.integrate_box_1d(-np.inf, u),
+                            dtype=torch.float32)
 
-                del cell_tr, cell, kde, sfit, ecdf
+                del cell_tr, cell, kde
 
     assert pval.max() <= 1 and pval.min() >= 0, "p-values not in [0, 1]"
     return pval

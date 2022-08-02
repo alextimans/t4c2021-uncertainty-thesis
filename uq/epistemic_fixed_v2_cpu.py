@@ -239,11 +239,6 @@ def detect_outliers(model: torch.nn.Module,
         logging.info(f"Outlier detection via {uq_method} finished for {city}.")
     logging.info(f"Outlier detection via {uq_method} finished for all cities in {cities}.")
 
-    # from statsmodels.distributions.empirical_distribution import ECDF
-    # sfit = kde.resample(100000, seed=42).reshape(-1)
-    # ecdf = ECDF(sfit)
-    # pval = 1 - ecdf([EPISTEMIC_UNC array])
-
 
 def get_pvalues(unc_tr, unc, device: str):
     samp, p_i, p_j, channels = tuple(unc.shape)
@@ -265,7 +260,7 @@ def get_pvalues(unc_tr, unc, device: str):
                 # Empirical CDF of KDE fit from large sample for support set coverage
                 ecdf = ECDF(sfit)
                 p = ecdf(cell) # array of CDF prob values across sample dim
-                p[cell > med] = 1 - p[cell > med]
+                p[cell > med] = 1 - p[cell > med] # array of p-values
                 pval[:, i, j, ch] = torch.tensor(p, dtype=torch.float32)
 
                 del cell_tr, cell, kde, sfit, ecdf
