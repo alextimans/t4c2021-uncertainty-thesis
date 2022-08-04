@@ -50,7 +50,9 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--uq_method", type=str, default=None, required=False, choices=["ensemble", "bnorm"],
                         help="Specify UQ method for epistemic uncertainty.")
     parser.add_argument("--fix_samp_idx", nargs=3, type=int, default=[None, None, None], required=False,
-                        help="Fixed sample indices for time frame across training data per city (Bangkok, Barcelona, Moscow) in order.")
+                        help="Fixed sample indices for time frame across training data per city [BANGKOK, BARCELONA, MOSCOW] in order.")
+    parser.add_argument("--cities", nargs=3, type=str, default=[None, None, None], required=False,
+                        help="City names to run outlier detection on, city in [BANGKOK, BARCELONA, MOSCOW].")
 
     parser.add_argument("--out_bound", type=float, default=0.01, required=False,
                         help="Outlier decision boundary: if p-value <= out_bound we consider value an outlier.")
@@ -58,6 +60,12 @@ def create_parser() -> argparse.ArgumentParser:
                         help="'Boolean' specifying if test_pred function should be called.")
     parser.add_argument("--detect_outliers_bool", type=str, default="True", required=False, choices=["True", "False"],
                         help="'Boolean' specifying if detect_outliers function should be called.")
+    parser.add_argument("--train_pred_bool", type=str, default="True", required=False, choices=["True", "False"],
+                        help="'Boolean' specifying if train set prediction in detect_outliers() should be called.")
+    parser.add_argument("--get_pval_bool", type=str, default="True", required=False, choices=["True", "False"],
+                        help="'Boolean' specifying if KDE fit + p-values in detect_outliers() should be called.")
+    parser.add_argument("--agg_pval_bool", type=str, default="True", required=False, choices=["True", "False"],
+                        help="'Boolean' specifying if aggregate p-values in detect_outliers() should be called.")
 
     return parser
 
@@ -152,6 +160,9 @@ def detect_outliers(model: torch.nn.Module,
                 uq_method: str,
                 save_checkpoint: str,
                 out_bound: float,
+                train_pred_bool: str,
+                get_pval_bool: str,
+                agg_pval_bool: str,
                 pred_to_file: bool = True,
                 pval_to_file: bool = True,
                 out_to_file: bool = True,
@@ -197,39 +208,52 @@ def detect_outliers(model: torch.nn.Module,
                                 pin_memory=parallel_use,
                                 **dataloader_config)
 
-        pred_tr, loss_city = uq_method_obj(device=device, # (samples, 3, H, W, Ch) torch.float32
-                                       loss_fct=loss_fct,
-                                       dataloader=dataloader,
-                                       model=model,
-                                       samp_limit=len(sub_idx),
-                                       parallel_use=parallel_use,
-                                       post_transform=post_transform)
-
-        logging.info(f"Obtained train set preds with uncertainty {uq_method} as {pred_tr.shape, pred_tr.dtype}.")
-        if pred_to_file:
-            write_data_to_h5(data=pred_tr, dtype=np.float16, compression="lzf", verbose=True,
-                             filename=os.path.join(res_path, f"pred_tr_{uq_method}.h5"))
+        # Train set predictions (uncertainties) for fixed sample idx
+        if eval(train_pred_bool) is not False:
+            pred_tr, loss_city = uq_method_obj(device=device, # (samples, 3, H, W, Ch) torch.float32
+                                           loss_fct=loss_fct,
+                                           dataloader=dataloader,
+                                           model=model,
+                                           samp_limit=len(sub_idx),
+                                           parallel_use=parallel_use,
+                                           post_transform=post_transform)
+    
+            logging.info(f"Obtained train set preds with uncertainty {uq_method} as {pred_tr.shape, pred_tr.dtype}.")
+            if pred_to_file:
+                write_data_to_h5(data=pred_tr, dtype=np.float16, compression="lzf", verbose=True,
+                                 filename=os.path.join(res_path, f"pred_tr_{uq_method}.h5"))
+        else:
+            logging.info(f"Train set preds assumed to be available as 'pred_tr_{uq_method}.h5'.")
+            pred_tr = load_h5_file(os.path.join(res_path, f"pred_tr_{uq_method}.h5"), dtype=torch.float32)
         del data, dataloader
 
-        unc_tr = pred_tr[:, 2, ...] # Train set uncertainties
+        unc_tr = pred_tr[:, 2, ...].to("cpu") # Train set uncertainties
         del pred_tr
         pred_path = os.path.join(test_pred_path, city, f"pred_{uq_method}.h5")
-        unc = load_h5_file(pred_path, dtype=torch.float32)[:, 2, ...].to(device) # Test set uncertainties
+        unc = load_h5_file(pred_path, dtype=torch.float32)[:, 2, ...].to("cpu") # Test set uncertainties
 
         # Cell-level uncertainty KDE Gaussian fit + p-values
-        pval = get_pvalues(unc_tr=unc_tr, unc=unc, device=device)
-        logging.info(f"Obtained tensor of p-values as {pval.shape, pval.dtype}.")
-        if pval_to_file:
-            write_data_to_h5(data=pval, dtype=np.float16, compression="lzf", verbose=True,
-                             filename=os.path.join(res_path, f"pval_{uq_method}.h5"))
+        if eval(get_pval_bool) is not False:
+            pval = get_pvalues(unc_tr=unc_tr, unc=unc, device=device)
+            logging.info(f"Obtained tensor of p-values as {pval.shape, pval.dtype}.")
+            if pval_to_file:
+                write_data_to_h5(data=pval, dtype=np.float16, compression="lzf", verbose=True,
+                                 filename=os.path.join(res_path, f"pval_{uq_method}.h5"))
+        else:
+            logging.info(f"P-values assumed to be available as 'pval_{uq_method}.h5'.")
+            pval = load_h5_file(os.path.join(res_path, f"pval_{uq_method}.h5"), dtype=torch.float32)
         del unc_tr, unc
 
         # p-value aggregation and outlier labelling (channel-level, pixel-level)
-        out = aggregate_pvalues(pval, out_bound, device)
-        logging.info(f"Obtained tensor of outlier labels as {out.shape, out.dtype}.")
-        if out_to_file:
-            write_data_to_h5(data=out, dtype=bool, compression="lzf", verbose=True,
-                             filename=os.path.join(res_path, f"out_{uq_method}.h5"))
+        if eval(agg_pval_bool) is not False:
+            out = aggregate_pvalues(pval, out_bound, device)
+            logging.info(f"Obtained tensor of outlier labels as {out.shape, out.dtype}.")
+            if out_to_file:
+                write_data_to_h5(data=out, dtype=bool, compression="lzf", verbose=True,
+                                 filename=os.path.join(res_path, f"out_{uq_method}.h5"))
+        else:
+            logging.info(f"Aggregated & labelled outliers assumed to be available as 'out_{uq_method}.h5'.")
+            out = load_h5_file(os.path.join(res_path, f"out_{uq_method}.h5"), dtype=torch.bool)
 
         # Outlier detection stats
         outlier_stats(out)
@@ -290,8 +314,8 @@ def aggregate_pvalues(pval, out_bound: float, device: str):
 
 def aggregate_channels(pval, out_bound: float):
     # Channel group is outlier if combined p-value outside outlier bound
-    p_vol_agg = combine_pvalues(pval[[0, 2, 4, 6]], method="fisher")
-    p_sp_agg = combine_pvalues(pval[[1, 3, 5, 7]], method="fisher")
+    p_vol_agg = combine_pvalues(pval[[0, 2, 4, 6]], method="fisher")[1]
+    p_sp_agg = combine_pvalues(pval[[1, 3, 5, 7]], method="fisher")[1]
 
     out_vol = True if p_vol_agg <= out_bound else False
     out_sp = True if p_sp_agg <= out_bound else False
@@ -308,20 +332,30 @@ def aggregate_pixel(out_ch):
 
 def outlier_stats(out):
     samp, p_i, p_j, _ = tuple(out.shape)
+    tot = samp * p_i * p_j
 
     logging.info("### Outlier stats ###")
-    logging.info(f"Outliers by vol ch: {out[..., 0].sum()}")
-    logging.info(f"Outliers by speed ch: {out[..., 1].sum()}")
-    logging.info(f"Outliers by pixel: {out[..., 2].sum()}/{p_i*p_j}")
 
-    i, j = (out[..., 2].sum(dim=0) == out[..., 2].sum(dim=0).max()).nonzero().squeeze()
-    v = out[..., 2].sum(dim=0)[i, j]
-    logging.info(f"Pixel with most outliers by sample: {(i.item(), j.item())} with {v}/{samp} outliers.")
+    ov, ov_pct = out[..., 0].sum(), out[..., 0].sum()/tot
+    logging.info(f"Total outliers by vol ch: {ov}/{tot} or {(ov_pct*100):.2f}%.")
 
-    samp_v = out[..., 2].sum(dim=(1,2))
-    logging.info(f"Mean pixel outlier count across samples: {samp_v.mean()}.")
-    logging.info(f"Sample with most pixel outliers: test sample {samp_v.argmax().item()+1} with {samp_v[samp_v.argmax()].item()} outliers.")
-    logging.info(f"Sample with least pixel outliers: test sample {samp_v.argmin().item()+1} with {samp_v[samp_v.argmin()].item()} outliers.")
+    os, os_pct = out[..., 1].sum(), out[..., 1].sum()/tot
+    logging.info(f"Total outliers by speed ch: {os}/{tot} or {(os_pct*100):.2f}%.")
+
+    op, op_pct = out[..., 2].sum(), out[..., 2].sum()/tot
+    logging.info(f"Total outliers by pixel: {op}/{tot} or {(op_pct*100):.2f}%.")
+
+    om = out[..., 2].sum(dim=0).max() # max outlier count across sample dim for pixel
+    omc = (out[..., 2].sum(dim=0) == om).sum()
+    logging.info(f"Pixels with max. outlier count by sample: {omc} pixels with {om}/{samp} outliers.")
+
+    osamp = out[..., 2].sum(dim=(1,2)).to(torch.float32)
+    osamp_m, osamp_std = int(osamp.mean().ceil()), int(osamp.std().ceil())
+    osamp_pct = osamp_m / (p_i * p_j)
+    logging.info(f"Avg. pixel outlier count by sample: {osamp_m} +/- {osamp_std} or {(osamp_pct*100):.2f}%.")
+
+    logging.info(f"Sample with most pixel outliers: test sample {osamp.argmax().item()+1} with {int(osamp[osamp.argmax()].item())} outliers.")
+    logging.info(f"Sample with least pixel outliers: test sample {osamp.argmin().item()+1} with {int(osamp[osamp.argmin()].item())} outliers.")
 
 
 def main():
@@ -339,6 +373,9 @@ def main():
     uq_method = args.uq_method
     test_pred_bool = args.test_pred_bool
     detect_outliers_bool = args.detect_outliers_bool
+
+    cities = [city for city in args.cities if city != "None"]
+    vars(args).pop("cities")
 
     model_class = configs[model_str]["model_class"]
     model_config = configs[model_str]["model_config"]
@@ -373,7 +410,7 @@ def main():
     if eval(test_pred_bool) is not False:
         logging.info("Collecting test set preds, in particular uncertainties.")
         test_pred(model=model,
-                       cities=["BANGKOK", "BARCELONA", "MOSCOW"],
+                       cities=cities,
                        dataset_config=dataset_config,
                        dataloader_config=dataloader_config,
                        parallel_use=parallel_use,
@@ -386,7 +423,7 @@ def main():
     if eval(detect_outliers_bool) is not False:
         logging.info("Detecting outliers on test set via train set distr. fits.")
         detect_outliers(model=model,
-                       cities=["BANGKOK", "BARCELONA", "MOSCOW"],
+                       cities=cities,
                        dataset_config=dataset_config,
                        dataloader_config=dataloader_config,
                        parallel_use=parallel_use,

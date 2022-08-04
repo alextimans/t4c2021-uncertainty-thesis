@@ -260,7 +260,7 @@ def get_outliers(unc_tr, unc, out_bound: float, device: str):
 
                 # cell level outlier label
                 q_l, q_h = mquantiles(sfit, prob=[out_bound, 1-out_bound])
-                out_cell[:, i, j, ch] = torch.from_numpy((cell <= q_l) + (cell >= q_h))
+                out_cell[:, i, j, ch] = (cell <= q_l) + (cell >= q_h)
 
                 del cell_tr, cell, kde, sfit
 
@@ -300,20 +300,30 @@ def aggregate_pixel(out_ch):
 
 def outlier_stats(out):
     samp, p_i, p_j, _ = tuple(out.shape)
+    tot = samp * p_i * p_j
 
     logging.info("### Outlier stats ###")
-    logging.info(f"Outliers by vol ch: {out[..., 0].sum()}")
-    logging.info(f"Outliers by speed ch: {out[..., 1].sum()}")
-    logging.info(f"Outliers by pixel: {out[..., 2].sum()}/{p_i*p_j}")
 
-    i, j = (out[..., 2].sum(dim=0) == out[..., 2].sum(dim=0).max()).nonzero().squeeze()
-    v = out[..., 2].sum(dim=0)[i, j]
-    logging.info(f"Pixel with most outliers by sample: {(i.item(), j.item())} with {v}/{samp} outliers.")
+    ov, ov_pct = out[..., 0].sum(), out[..., 0].sum()/tot
+    logging.info(f"Total outliers by vol ch: {ov}/{tot} or {(ov_pct*100):.2f}%.")
 
-    samp_v = out[..., 2].sum(dim=(1,2))
-    logging.info(f"Mean pixel outlier count across samples: {samp_v.mean()}.")
-    logging.info(f"Sample with most pixel outliers: test sample {samp_v.argmax().item()+1} with {samp_v[samp_v.argmax()].item()} outliers.")
-    logging.info(f"Sample with least pixel outliers: test sample {samp_v.argmin().item()+1} with {samp_v[samp_v.argmin()].item()} outliers.")
+    os, os_pct = out[..., 1].sum(), out[..., 1].sum()/tot
+    logging.info(f"Total outliers by speed ch: {os}/{tot} or {(os_pct*100):.2f}%.")
+
+    op, op_pct = out[..., 2].sum(), out[..., 2].sum()/tot
+    logging.info(f"Total outliers by pixel: {op}/{tot} or {(op_pct*100):.2f}%.")
+
+    om = out[..., 2].sum(dim=0).max() # max outlier count across sample dim for pixel
+    omc = (out[..., 2].sum(dim=0) == om).sum()
+    logging.info(f"Pixels with max. outlier count by sample: {omc} pixels with {om}/{samp} outliers.")
+
+    osamp = out[..., 2].sum(dim=(1,2)).to(torch.float32)
+    osamp_m, osamp_std = int(osamp.mean().ceil()), int(osamp.std().ceil())
+    osamp_pct = osamp_m / (p_i * p_j)
+    logging.info(f"Avg. pixel outlier count by sample: {osamp_m} +/- {osamp_std} or {(osamp_pct*100):.2f}%.")
+
+    logging.info(f"Sample with most pixel outliers: test sample {osamp.argmax().item()+1} with {int(osamp[osamp.argmax()].item())} outliers.")
+    logging.info(f"Sample with least pixel outliers: test sample {osamp.argmin().item()+1} with {int(osamp[osamp.argmin()].item())} outliers.")
 
 
 def main():
