@@ -208,7 +208,7 @@ def detect_outliers(model: torch.nn.Module,
                                 pin_memory=parallel_use,
                                 **dataloader_config)
 
-        # Train set predictions (uncertainties) for fixed sample idx
+        # Train set predictions for fixed sample idx
         if eval(train_pred_bool) is not False:
             pred_tr, loss_city = uq_method_obj(device=device, # (samples, 3, H, W, Ch) torch.float32
                                            loss_fct=loss_fct,
@@ -227,14 +227,19 @@ def detect_outliers(model: torch.nn.Module,
             pred_tr = load_h5_file(os.path.join(res_path, f"pred_tr_{uq_method}.h5"), dtype=torch.float32)
         del data, dataloader
 
-        unc_tr = pred_tr[:, 2, ...].to("cpu") # Train set uncertainties
+        # Train set uncertainties
+        unc_tr = pred_tr[:, 2, ...].to("cpu")
         del pred_tr
-        pred_path = os.path.join(test_pred_path, city, f"pred_{uq_method}.h5")
-        unc = load_h5_file(pred_path, dtype=torch.float32)[:, 2, ...].to("cpu") # Test set uncertainties
+
+        # Test set uncertainties
+        pred = load_h5_file(os.path.join(test_pred_path, city, f"pred_{uq_method}.h5"), dtype=torch.float32)
+        pix = get_nonzero_gt(pred)
+        unc = pred[:, 2, ...]
+        del pred
 
         # Cell-level uncertainty KDE Gaussian fit + p-values
         if eval(get_pval_bool) is not False:
-            pval = get_pvalues(unc_tr=unc_tr, unc=unc, device=device)
+            pval = get_pvalues(unc_tr, unc, pix, device)
             logging.info(f"Obtained tensor of p-values as {pval.shape, pval.dtype}.")
             if pval_to_file:
                 write_data_to_h5(data=pval, dtype=np.float16, compression="lzf", verbose=True,
@@ -246,7 +251,7 @@ def detect_outliers(model: torch.nn.Module,
 
         # p-value aggregation and outlier labelling (channel-level, pixel-level)
         if eval(agg_pval_bool) is not False:
-            out = aggregate_pvalues(pval, out_bound, device)
+            out = aggregate_pvalues(pval, pix, out_bound, device)
             logging.info(f"Obtained tensor of outlier labels as {out.shape, out.dtype}.")
             if out_to_file:
                 write_data_to_h5(data=out, dtype=bool, compression="lzf", verbose=True,
@@ -263,52 +268,49 @@ def detect_outliers(model: torch.nn.Module,
     logging.info(f"Outlier detection via {uq_method} finished for all cities in {cities}.")
 
 
-def get_pvalues(unc_tr, unc, device: str):
+def get_nonzero_gt(pred):
+    # get pixel indices that have ground truth sum of vol > 0 across sample dim
+    return (pred[:, 0, :, :, [0, 2, 4, 6]].sum(dim=(0, -1)) > 0).nonzero(as_tuple=False)
+
+
+def get_pvalues(unc_tr, unc, pix, device: str):
     samp, p_i, p_j, channels = tuple(unc.shape)
-    # Tensor containing cell-level p-values
-    # for test set uncertainty vs. train set uncertainty KDE fit
-    pval = torch.empty(size=(samp, p_i, p_j, channels), dtype=torch.float32, device="cpu")
 
-    for i in tqdm(range(p_i), desc="Pixel height"):
-        for j in range(p_j):
-            for ch in range(channels):
+    # Tensor containing cell-level p-values for test set uncertainty vs. train set uncertainty KDE fit
+    pval = torch.ones(size=(samp, p_i, p_j, channels), dtype=torch.float32, device="cpu")
 
-                cell_tr = unc_tr[:, i, j, ch]
-                cell = unc[:, i, j, ch]
-                kde = gaussian_kde(cell_tr, bw_method="scott")
-                med =  np.median(kde.resample(size=10000))
+    for i, j in tqdm(pix, desc="Pixel pairs"):
+        for ch in range(channels):
 
-                for s in range(samp):
-                    u = cell[s]
-                    if u >= med:
-                        pval[s, i, j, ch] = torch.tensor(
-                            kde.integrate_box_1d(u, np.inf),
-                            dtype=torch.float32)
-                    elif u < med:
-                        pval[s, i, j, ch] = torch.tensor(
-                            kde.integrate_box_1d(-np.inf, u),
-                            dtype=torch.float32)
+            # i, j = i.item(), j.item()
+            kde = gaussian_kde(unc_tr[:, i, j, ch], bw_method="scott")
+            cell = unc[:, i, j, ch]
 
-                del cell_tr, cell, kde
+            for s in range(samp):
+                pval[s, i, j, ch] = torch.tensor(
+                    kde.integrate_box_1d(cell[s], np.inf),
+                    dtype=torch.float32)
 
     assert pval.max() <= 1 and pval.min() >= 0, "p-values not in [0, 1]"
     return pval
 
 
-def aggregate_pvalues(pval, out_bound: float, device: str):
-    logging.info(f"Using outlier decision boundary {out_bound=}.")
+def aggregate_pvalues(pval, pix, out_bound: float, device: str):
+    logging.info(f"Making outlier decision based on prob. mass boundary {out_bound=}.")
     samp, p_i, p_j, _ = tuple(pval.shape)
+
     # Boolean tensor containing outlier labelling
-    out = torch.empty(size=(samp, p_i, p_j, 3), dtype=torch.bool, device="cpu")
+    out = torch.zeros(size=(samp, p_i, p_j, 3), dtype=torch.bool, device="cpu")
 
-    for i in tqdm(range(p_i), desc="Pixel height"):
-        for j in range(p_j):
-            for s in range(samp):
+    for i, j in tqdm(pix, desc="Pixel pairs"):
+        for s in range(samp):
 
-                out_ch = aggregate_channels(pval[s, i, j, :], out_bound)
-                out_pix = aggregate_pixel(out_ch)
-                # 1: Outlier vol, 2: Outlier speed, 3: Outlier pixel
-                out[s, i, j, :] = torch.cat((out_ch, out_pix))
+            i, j = i.item(), j.item()
+            out_ch = aggregate_channels(pval[s, i, j, :], out_bound)
+            out_pix = aggregate_pixel(out_ch)
+            # 1: Outlier vol, 2: Outlier speed, 3: Outlier pixel
+            out[s, i, j, :] = torch.cat((out_ch, out_pix))
+
     return out
 
 
@@ -332,30 +334,38 @@ def aggregate_pixel(out_ch):
 
 def outlier_stats(out):
     samp, p_i, p_j, _ = tuple(out.shape)
-    tot = samp * p_i * p_j
+    tot, pix_tot = samp * p_i * p_j, p_i * p_j
 
     logging.info("### Outlier stats ###")
 
     ov, ov_pct = out[..., 0].sum(), out[..., 0].sum()/tot
-    logging.info(f"Total outliers by vol ch: {ov}/{tot} or {(ov_pct*100):.2f}%.")
+    logging.info(f"Total outliers by vol ch: {ov}/({samp}*{p_i}*{p_j}) or {(ov_pct*100):.2f}%.")
 
     os, os_pct = out[..., 1].sum(), out[..., 1].sum()/tot
-    logging.info(f"Total outliers by speed ch: {os}/{tot} or {(os_pct*100):.2f}%.")
+    logging.info(f"Total outliers by speed ch: {os}/({samp}*{p_i}*{p_j}) or {(os_pct*100):.2f}%.")
 
     op, op_pct = out[..., 2].sum(), out[..., 2].sum()/tot
-    logging.info(f"Total outliers by pixel: {op}/{tot} or {(op_pct*100):.2f}%.")
+    logging.info(f"Total outliers by pixel: {op}/({samp}*{p_i}*{p_j}) or {(op_pct*100):.2f}%.")
 
-    om = out[..., 2].sum(dim=0).max() # max outlier count across sample dim for pixel
+    om = out[..., 2].sum(dim=0).max() # max outlier counts across sample dim for pixels
     omc = (out[..., 2].sum(dim=0) == om).sum()
-    logging.info(f"Pixels with max. outlier count by sample: {omc} pixels with {om}/{samp} outliers.")
+    omc_pct = omc / tot
+    logging.info(f"""Pixels with max. outlier count by sample: {omc} pixels or
+                 {(omc_pct*100):.2f}% with {om}/{samp} outliers.""")
 
     osamp = out[..., 2].sum(dim=(1,2)).to(torch.float32)
     osamp_m, osamp_std = int(osamp.mean().ceil()), int(osamp.std().ceil())
-    osamp_pct = osamp_m / (p_i * p_j)
-    logging.info(f"Avg. pixel outlier count by sample: {osamp_m} +/- {osamp_std} or {(osamp_pct*100):.2f}%.")
+    osamp_pct_m, osamp_pct_std = osamp_m / pix_tot, osamp_std / pix_tot
+    logging.info(f"""Avg. pixel outlier count by sample: {osamp_m} +/- {osamp_std} of ({p_i}*{p_j})
+                 or {(osamp_pct_m*100):.2f} +/- {(osamp_pct_std*100):.2f}%.""")
 
-    logging.info(f"Sample with most pixel outliers: test sample {osamp.argmax().item()+1} with {int(osamp[osamp.argmax()].item())} outliers.")
-    logging.info(f"Sample with least pixel outliers: test sample {osamp.argmin().item()+1} with {int(osamp[osamp.argmin()].item())} outliers.")
+    osmax, osmin = osamp.argmax(), osamp.argmin()
+    osma, osma_pct = int(osamp[osmax].item()), osamp[osmax] / pix_tot
+    osmi, osmi_pct = int(osamp[osmin].item()), osamp[osmin] / pix_tot
+    logging.info(f"""Sample with most pixel outliers: test sample {osmax.item()}
+                 with {osma}/({p_i}*{p_j}) outliers or {(osma_pct*100):.2f}%.""")
+    logging.info(f"""Sample with least pixel outliers: test sample {osmin.item()}
+                 with {osmi}/({p_i}*{p_j}) outliers or {(osmi_pct*100):.2f}%.""")
 
 
 def main():

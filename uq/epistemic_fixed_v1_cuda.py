@@ -227,10 +227,10 @@ def detect_outliers(model: torch.nn.Module,
             pred_tr = load_h5_file(os.path.join(res_path, f"pred_tr_{uq_method}.h5"), dtype=torch.float32)
         del data, dataloader
 
-        unc_tr = pred_tr[:, 2, ...].to("cpu") # Train set uncertainties
+        unc_tr = pred_tr[:, 2, ...].to(device) # Train set uncertainties
         del pred_tr
         pred_path = os.path.join(test_pred_path, city, f"pred_{uq_method}.h5")
-        unc = load_h5_file(pred_path, dtype=torch.float32)[:, 2, ...].to("cpu") # Test set uncertainties
+        unc = load_h5_file(pred_path, dtype=torch.float32)[:, 2, ...].to(device) # Test set uncertainties
 
         # Cell-level uncertainty KDE Gaussian fit + p-values
         if eval(get_pval_bool) is not False:
@@ -241,7 +241,7 @@ def detect_outliers(model: torch.nn.Module,
                                  filename=os.path.join(res_path, f"pval_{uq_method}.h5"))
         else:
             logging.info(f"P-values assumed to be available as 'pval_{uq_method}.h5'.")
-            pval = load_h5_file(os.path.join(res_path, f"pval_{uq_method}.h5"), dtype=torch.float32)
+            pval = load_h5_file(os.path.join(res_path, f"pval_{uq_method}.h5"), dtype=torch.float32).to(device)
         del unc_tr, unc
 
         # p-value aggregation and outlier labelling (channel-level, pixel-level)
@@ -253,7 +253,7 @@ def detect_outliers(model: torch.nn.Module,
                                  filename=os.path.join(res_path, f"out_{uq_method}.h5"))
         else:
             logging.info(f"Aggregated & labelled outliers assumed to be available as 'out_{uq_method}.h5'.")
-            out = load_h5_file(os.path.join(res_path, f"out_{uq_method}.h5"), dtype=torch.bool)
+            out = load_h5_file(os.path.join(res_path, f"out_{uq_method}.h5"), dtype=torch.bool).to(device)
 
         # Outlier detection stats
         outlier_stats(out)
@@ -273,10 +273,10 @@ def get_pvalues(unc_tr, unc, device: str):
         for j in range(p_j):
             for ch in range(channels):
 
-                cell_tr = unc_tr[:, i, j, ch].cpu()
-                cell = unc[:, i, j, ch].cpu()
+                cell_tr = unc_tr[:, i, j, ch].to("cpu")
+                cell = unc[:, i, j, ch].to("cpu")
                 kde = gaussian_kde(cell_tr, bw_method="scott")
-                med =  np.median(kde.resample(size=10000))
+                med = np.median(kde.resample(size=10000))
 
                 for s in range(samp):
                     u = cell[s]
@@ -305,7 +305,7 @@ def aggregate_pvalues(pval, out_bound: float, device: str):
         for j in range(p_j):
             for s in range(samp):
 
-                out_ch = aggregate_channels(pval[s, i, j, :], out_bound)
+                out_ch = aggregate_channels(pval[s, i, j, :].to("cpu"), out_bound).to(device)
                 out_pix = aggregate_pixel(out_ch)
                 # 1: Outlier vol, 2: Outlier speed, 3: Outlier pixel
                 out[s, i, j, :] = torch.cat((out_ch, out_pix))
