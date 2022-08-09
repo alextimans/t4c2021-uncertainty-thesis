@@ -56,6 +56,8 @@ def create_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--out_bound", type=float, default=0.01, required=False,
                         help="Outlier decision boundary: if p-value <= out_bound we consider value an outlier.")
+    parser.add_argument("--out_name", type=str, default="out", required=False,
+                        help="Outlier file name.")
     parser.add_argument("--test_pred_bool", type=str, default="True", required=False, choices=["True", "False"],
                         help="'Boolean' specifying if test_pred function should be called.")
     parser.add_argument("--detect_outliers_bool", type=str, default="True", required=False, choices=["True", "False"],
@@ -160,6 +162,7 @@ def detect_outliers(model: torch.nn.Module,
                 uq_method: str,
                 save_checkpoint: str,
                 out_bound: float,
+                out_name: str,
                 train_pred_bool: str,
                 get_pval_bool: str,
                 agg_pval_bool: str,
@@ -255,10 +258,10 @@ def detect_outliers(model: torch.nn.Module,
             logging.info(f"Obtained tensor of outlier labels as {out.shape, out.dtype}.")
             if out_to_file:
                 write_data_to_h5(data=out, dtype=bool, compression="lzf", verbose=True,
-                                 filename=os.path.join(res_path, f"out_{uq_method}.h5"))
+                                 filename=os.path.join(res_path, f"{out_name}_{uq_method}.h5"))
         else:
             logging.info(f"Aggregated & labelled outliers assumed to be available as 'out_{uq_method}.h5'.")
-            out = load_h5_file(os.path.join(res_path, f"out_{uq_method}.h5"), dtype=torch.bool)
+            out = load_h5_file(os.path.join(res_path, f"{out_name}_{uq_method}.h5"), dtype=torch.bool)
 
         # Outlier detection stats
         outlier_stats(out)
@@ -305,7 +308,7 @@ def aggregate_pvalues(pval, pix, out_bound: float, device: str):
     for i, j in tqdm(pix, desc="Pixel pairs"):
         for s in range(samp):
 
-            i, j = i.item(), j.item()
+            # i, j = i.item(), j.item()
             out_ch = aggregate_channels(pval[s, i, j, :], out_bound)
             out_pix = aggregate_pixel(out_ch)
             # 1: Outlier vol, 2: Outlier speed, 3: Outlier pixel
@@ -316,8 +319,8 @@ def aggregate_pvalues(pval, pix, out_bound: float, device: str):
 
 def aggregate_channels(pval, out_bound: float):
     # Channel group is outlier if combined p-value outside outlier bound
-    p_vol_agg = combine_pvalues(pval[[0, 2, 4, 6]], method="fisher")[1]
-    p_sp_agg = combine_pvalues(pval[[1, 3, 5, 7]], method="fisher")[1]
+    p_vol_agg = combine_pvalues(pval[[0, 2, 4, 6]].clamp(min=1e-10), method="fisher")[1]
+    p_sp_agg = combine_pvalues(pval[[1, 3, 5, 7]].clamp(min=1e-10), method="fisher")[1]
 
     out_vol = True if p_vol_agg <= out_bound else False
     out_sp = True if p_sp_agg <= out_bound else False

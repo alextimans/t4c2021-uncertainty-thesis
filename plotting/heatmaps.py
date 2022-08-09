@@ -452,7 +452,6 @@ im = ax.imshow(dat, cmap="OrRd")
 ax.get_xaxis().set_visible(False)
 ax.get_yaxis().set_visible(False)
 
-
 meta = load_h5_file("./data/raw/BERLIN/BERLIN_test_additional_temporal.h5")
 quant = load_h5_file("./data/test_tta_unet2/calib_quant_90_tta_unet2.h5")
 
