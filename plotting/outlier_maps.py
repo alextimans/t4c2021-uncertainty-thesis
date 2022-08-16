@@ -68,14 +68,14 @@ def outlier_stats(out):
 # STATIC VALUES
 # =============================================================================
 map_path = "./data/raw"
-fig_path = "./figures/out_detect"
-base_path = "./results/out_detect"
+fig_path = "./figures/out_evening"
+base_path = "./results/out_evening"
 
-city = "BARCELONA" # BANGKOK, BARCELONA
+city = "MOSCOW" # BANGKOK, BARCELONA, MOSCOW
 uq_method = "ensemble" # bnorm
 
 out_b = {"ob01": 0.1, "ob025": 0.25, "ob05": 0.5, "ob075": 0.75, "ob1": 1, "ob2": 2}
-ob = "ob1"
+ob = "ob01"
 
 
 # =============================================================================
@@ -107,7 +107,7 @@ fig.colorbar(mappable=im, ax=axes.ravel().tolist(), location="right", aspect=15,
 save_fig(fig_path, city, uq_method, f"mean_samp_{ob}")
 
 # Outlier per pixel for fixed samp idx
-samp = 50 # fixed
+samp = 89 # fixed
 cmap = ListedColormap(["None", "red"])
 # cmap = mpl.cm.get_cmap("OrRd", 2)
 fig, axes = plt.subplots(1, 3, figsize=(8, 3))
@@ -133,9 +133,9 @@ out = load_h5_file(os.path.join(base_path, city, f"out_{ob}_{uq_method}.h5"))
 res_map = load_h5_file(os.path.join(map_path, city, f"{city}_map_high_res.h5"))
 
 # Outlier per pixel for fixed samp idx and fixed city crop
-samp = 89
-r = 390 # center pixel height (y-axis T to B)
-c = 210 # center pixel width (x-axis L to R)
+samp = 10
+r = 150 # center pixel height (y-axis T to B)
+c = 60 # center pixel width (x-axis L to R)
 num = 30 # display: center +- num
 
 cmap = ListedColormap(["None", "red"])
@@ -205,8 +205,8 @@ ani.save(path, fps=3) # .mp4
 out = load_h5_file(os.path.join(base_path, city, f"out_{ob}_{uq_method}.h5"))
 res_map = load_h5_file(os.path.join(map_path, city, f"{city}_map_high_res.h5"))
 
-r = 390 # center pixel height (y-axis T to B)
-c = 210 # center pixel width (x-axis L to R)
+r = 150 # center pixel height (y-axis T to B)
+c = 60 # center pixel width (x-axis L to R)
 num = 30 # display: center +- num
 
 cmap = ListedColormap(["None", "red"])
@@ -305,8 +305,10 @@ from scipy.stats import combine_pvalues
 # pred_tr = load_h5_file(os.path.join(base_path, city, f"pred_tr_{uq_method}.h5"))
 pval = load_h5_file(os.path.join(base_path, city, f"pval_{uq_method}.h5"))
 
-# find pixel: (out[..., 2].sum(dim=0) == 90).nonzero(as_tuple=False)
-pix_h, pix_w = 386, 191 # fixed pixel
+# find pixel
+(out[..., 2].sum(dim=0) == 90).nonzero(as_tuple=False)
+
+pix_h, pix_w = 175, 250 # fixed pixel
 samp_c = 90 # sample count, not fixed sample!
 pval_pix = pval[:, pix_h, pix_w, :]
 
@@ -325,18 +327,18 @@ for i, ax in enumerate(axes.flat):
 
     out_bound = 0.01
     ax.axhline(1-out_bound, color="sienna", linestyle=":", label="outlier bound 1%")
-    ax.text(x=0, y=1-out_bound-5e-4, s=rf"{(agg_pval[:, i] >= 1-out_bound).sum().item()}$\uparrow$", color="sienna", fontweight="bold")
+    ax.text(x=0, y=1-out_bound-6e-4, s=rf"{(agg_pval[:, i] >= 1-out_bound).sum().item()}$\uparrow$", color="sienna", fontweight="bold")
 
     out_bound = 0.005
     ax.axhline(1-out_bound, color="orange", linestyle=":", label="outlier bound 0.5%")
-    ax.text(x=0, y=1-out_bound-5e-4, s=rf"{(agg_pval[:, i] >= 1-out_bound).sum().item()}$\uparrow$", color="orange", fontweight="bold")
+    ax.text(x=0, y=1-out_bound-6e-4, s=rf"{(agg_pval[:, i] >= 1-out_bound).sum().item()}$\uparrow$", color="orange", fontweight="bold")
 
     out_bound = 0.001
     ax.axhline(1-out_bound, color="red", linestyle=":", label="outlier bound 0.1%")
-    ax.text(x=0, y=1-out_bound-5e-4, s=rf"{(agg_pval[:, i] >= 1-out_bound).sum().item()}$\uparrow$", color="red", fontweight="bold")
+    ax.text(x=0, y=1-out_bound-6e-4, s=rf"{(agg_pval[:, i] >= 1-out_bound).sum().item()}$\uparrow$", color="red", fontweight="bold")
 
     ax.set_ylabel("1 - p-value")
-    ax.set_ylim(0.98, 1.0)
+    ax.set_ylim(0.98, 1.0003)
     ax.legend()
 fig.suptitle(f"{city.capitalize()}, UQ: {uq_method}, Pixel ({pix_h}, {pix_w}), " +
              "P-values (Fisher) & outlier bounds vs. test samples", fontsize="small")
@@ -371,3 +373,59 @@ fig.suptitle(f"{city.capitalize()}, UQ: {uq_method}, " +
              "Perc of total outlier count (sum over pixels + samples) vs. outlier bounds", fontsize="small")
 
 save_fig(fig_path, city, uq_method, "out_perc_vs_ob")
+
+
+# =============================================================================
+# Hist comparison test/train uncertainties; fixed pixel
+# =============================================================================
+
+out = load_h5_file(os.path.join(base_path, city, f"out_{ob}_{uq_method}.h5"))
+pred = load_h5_file(os.path.join(base_path, city, f"pred_{uq_method}.h5"))
+pred_tr = load_h5_file(os.path.join(base_path, city, f"pred_tr_{uq_method}.h5"))
+
+# find high outlier pixel
+(out[..., 2].sum(dim=0) == 90).nonzero(as_tuple=False)
+# fixed pixel
+pix_h, pix_w = 0, 25
+# where do the outlier labels come from
+out[:, pix_h, pix_w, :].sum(dim=0)
+
+# Sum over channel uncertainties
+pred_pix = torch.stack((pred[:, 2, pix_h, pix_w, [0, 2, 4, 6]].sum(dim=-1),
+                        pred[:, 2, pix_h, pix_w, [1, 3, 5, 7]].sum(dim=-1)), dim=1)
+pred_tr_pix = torch.stack((pred_tr[:, 2, pix_h, pix_w, [0, 2, 4, 6]].sum(dim=-1),
+                           pred_tr[:, 2, pix_h, pix_w, [1, 3, 5, 7]].sum(dim=-1)), dim=1)
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+lab = ["Volume", "Speed"]
+# ranges = [0.3, 1.5]
+for i, ax in enumerate(axes.flat):
+    ax.hist(pred_pix[:, i].numpy(), bins=25, alpha=0.6, #range=(0,ranges[i]),
+            color="red", label="Test set", density=True)
+    ax.hist(pred_tr_pix[:, i].numpy(), bins=25, alpha=0.6, #range=(0,ranges[i]),
+            color="blue", label="Train set", density=True)
+
+    # out_bound = out_b[ob]
+    # vl = torch.quantile(pred_tr_pix[:, i], 1-(out_bound/100)).item()
+    oc = int(out[:, pix_h, pix_w, i].sum(dim=0).item())
+    # ax.axvline(vl, color="black", linestyle=":", label=f"Outlier bound {out_bound}%")
+    # ax.text(x=vl+0.1, y=ax.get_ylim()[1]-0.5, s=rf"{oc}$\rightarrow$", color="black", fontweight="bold")
+
+    ax.set_title(f"{lab[i]}, {oc}/90 outliers", fontsize="small")
+    ax.set_ylabel("Density")
+    ax.set_xlabel("Sum over channel uncertainties")
+    ax.legend()
+    # ax.grid()
+fig.suptitle(f"{city.capitalize()}, UQ: {uq_method}, Pixel ({pix_h}, {pix_w}), " +
+             "Histograms of test vs. train set uncertainties", fontsize="small")
+
+save_fig(fig_path, city, uq_method, f"hist_unc_pix_{pix_h}_{pix_w}")
+
+
+# =============================================================================
+# Outlier exploration
+# =============================================================================
+
+"""
+
+"""

@@ -7,6 +7,16 @@ class PointPred:
     def __init__(self):
         pass
 
+    def constant_uncertainty(self, pred):
+        # Std over cell predictions for test samples
+        return torch.repeat_interleave(
+            torch.std(pred[:, 1, ...], dim=0, unbiased=False
+                      ).unsqueeze(dim=0), pred.shape[0], dim=0)
+        # 0.5 * abs (pred_max - pred_min) per cell
+        # return torch.repeat_interleave(
+        #     (0.5 * torch.abs(torch.max(pred[:, 1, ...], dim=0)[0] - torch.min(pred[:, 1, ...], dim=0)[0])
+        #      ).unsqueeze(dim=0), pred.shape[0], dim=0)
+
     @torch.no_grad()
     def __call__(self, device, loss_fct, dataloader, model, samp_limit,
                  parallel_use, post_transform) -> Tuple[torch.Tensor, float]:
@@ -27,7 +37,6 @@ class PointPred:
 
                 y_pred = model(X) # (1, 6 * Ch, H+pad, W+pad)
                 loss = loss_fct(y_pred[:, :, 1:, 6:-6], y[:, :, 1:, 6:-6])
-                # Uncertainty is always zero
                 y_pred = post_transform(torch.cat((y, y_pred, torch.zeros_like(y_pred)), dim=0)
                                         )[:, 5, ...].clamp(0, 255).unsqueeze(dim=0) # (1, 3, H, W, Ch), only consider pred horizon 1h
 
@@ -39,5 +48,8 @@ class PointPred:
                 assert pred[(batch * bsize):(batch * bsize + bsize)].shape == y_pred.shape
                 pred[(batch * bsize):(batch * bsize + bsize)] = y_pred # Fill slice
                 del X, y, y_pred
-          
+
+        # Constant uncertainty baseline per cell (pixel + channel)
+        pred[:, 2, ...] = self.constant_uncertainty(pred).clamp(min=1e-4)
+
         return pred, loss_test

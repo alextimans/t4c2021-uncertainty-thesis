@@ -22,7 +22,7 @@ ts = torch.sum(data[..., [0, 2, 4, 6]], dim=(1,2,3))
 plt.title(f"{city} {date} sum vol channels; max at {ts.argmax()}")
 plt.plot(ts)
 
-t = 100
+t = 246
 datetime.time(hour=t // 12, minute=t % 12 * 5).isoformat(timespec="minutes")
 
 ### Multiple plot
@@ -33,6 +33,8 @@ path = os.path.join("data", "raw", city, "train", f"*_{city}_8ch.h5")
 files = sorted(glob.glob(path, recursive=True))
 rand_idx = random.sample(range(len(files)), s)
 file = [files[i] for i in rand_idx]
+m = 110
+e = 246
 
 ts = torch.empty((288, s))
 for i, f in enumerate(file):
@@ -41,6 +43,12 @@ for i, f in enumerate(file):
 
 for i in range(s):
     plt.plot(ts[:, i], label=file[i].split("/")[-1].split("_")[0])
+
+plt.axvline(m, color="red", linestyle=":", label=f"morning {m}")
+plt.axvline(m+12, color="red", linestyle=":")
+plt.axvline(e, color="blue", linestyle=":", label=f"evening {e}")
+plt.axvline(e+12, color="blue", linestyle=":")
+
 plt.title(city)
 plt.legend()
 plt.show()

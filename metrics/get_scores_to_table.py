@@ -31,7 +31,7 @@ def get_scores_to_table(test_pred_path: str):
     
     mask = ["", "_mask"]
     channels = ["speed", "vol"]
-    uq_methods = ["point", "ensemble", "bnorm", "tta", "patches"]
+    uq_methods = ["point", "combo", "ensemble", "bnorm", "tta", "patches"]
     
     for m in mask:
         for ch in channels:

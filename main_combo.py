@@ -16,8 +16,8 @@ from util.logging import t4c_apply_basic_logging_config
 from util.get_device import get_device
 from util.set_seed import set_seed
 
-from uq.eval_model import eval_test, eval_calib
-# from uq.eval_tta_ensemble import eval_test, eval_calib
+# from uq.eval_model import eval_test, eval_calib
+from uq.eval_tta_ensemble import eval_test, eval_calib
 
 
 def create_parser() -> argparse.ArgumentParser:
