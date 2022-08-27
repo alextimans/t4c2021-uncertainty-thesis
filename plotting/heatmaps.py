@@ -77,6 +77,24 @@ fig.colorbar(im1, cax=cax, ax=[ax1, ax2])
 ax1.set_title("Uncertainty (normalized)")
 ax2.set_title("MSE (normalized)")
 
+# fig, (ax1, ax2, cax) = plt.subplots(1, 3, figsize=(4, 2.6),
+#                                     gridspec_kw={"width_ratios":[1, 1, 0.05]})
+# fig.subplots_adjust(wspace=0.3)
+# # norm = mpl.colors.Normalize()
+# ax1.set_title("MSE", fontsize="small")
+# ax1.get_yaxis().set_visible(False)
+# ax1.get_xaxis().set_visible(False)
+# ax2.set_title("Unc", fontsize="small")
+# ax2.get_yaxis().set_visible(False)
+# ax2.get_xaxis().set_visible(False)
+
+# im1 = ax1.imshow(normalize(torch.log(mse)), cmap=my_cmap)
+# im2 = ax2.imshow(normalize(torch.log(unc)), cmap=my_cmap)
+# cax.set_axes_locator(InsetPosition(ax2, [1.05, 0, 0.05, 1])) # https://stackoverflow.com/questions/13784201/how-to-have-one-colorbar-for-all-subplots
+# fig.colorbar(im1, cax=cax, ax=[ax1, ax2])
+# fig.suptitle(f"{city.capitalize()}, UQ: {uq_method}, Mask: {m}, Ch: {ch}\n " +
+#              "Sum log-norm MSE vs. unc", fontsize="small")
+
 ### Mean uncertainty - RMSE (1 plot)
 
 diff = torch.abs(torch.sqrt(mse) - unc) #[150:300, 150:300], [220:250, 230:260]

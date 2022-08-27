@@ -35,6 +35,14 @@ def load_ensemble(device: str, save_checkpoint: str, model_class,
     return ensemble
 
 
+def get_both_uncertainty(pred):
+    return torch.stack((pred[0, :, 0, ...], # ground truth
+                        torch.mean(pred[:, :, 1, ...], dim=0), # mean prediction
+                        torch.std(pred[:, :, 1, ...], dim=0, unbiased=False).clamp(min=1e-4), # epistemic (std pred)
+                        torch.mean(pred[:, :, 2, ...], dim=0) # mean aleatoric
+                        ), dim=1)
+
+
 def get_predictive_uncertainty(pred):
     return torch.stack((pred[0, :, 0, ...], # ground truth
                         torch.mean(pred[:, :, 1, ...], dim=0), # mean prediction
@@ -128,12 +136,13 @@ def eval_test(model: torch.nn.Module,
             logging.info(f"Obtained predictions with uncertainty {uq_method} as {pred.shape, pred.dtype}.")
             ens[i, ...] = pred.to("cpu")
             del pred
-            
-        # (samples, 3, H, W, Ch) torch.float32, where 2: total predictive uncertainty
-        pred = get_predictive_uncertainty(ens).to(device)
+
+        pred = get_both_uncertainty(ens) # (samples, 4, H, W, Ch) torch.float32, where 3: epistemic, 4: aleatoric
         if pred_to_file:
             write_data_to_h5(data=pred, dtype=np.float16, compression="lzf", verbose=True,
                              filename=os.path.join(h5_pred_path, f"pred_{uq_method}.h5"))
+        pred = get_predictive_uncertainty(ens).to(device) # sum both uncertainties
+        del ens
 
         quant = os.path.join(quantiles_path, city, f"quant_{int((1-alpha)*100)}_{uq_method}.h5")
         logging.info(f"Using quantiles from '{quant}'.")
