@@ -26,6 +26,16 @@ def save_fig(fig_path: str, city: str, uq_method: str, filename: str):
     print(f"Saved figure to {file_path}.")
 
 
+def make_cmap(cmap_str: str = "OrRd"):
+    cmap = plt.get_cmap(cmap_str)
+    my_cmap = cmap(np.arange(cmap.N))
+    # my_cmap[:, -1] = np.linspace(0, 1, cmap.N) # add transparency gradient
+    my_cmap[:, -1] = np.concatenate([np.linspace(0, 1, int(cmap.N/2)),
+                                     np.ones(int(cmap.N/2))])
+    my_cmap = ListedColormap(my_cmap)
+    return my_cmap
+
+
 def outlier_stats(out):
     samp, p_i, p_j, _ = tuple(out.shape)
     tot, pix_tot = samp * p_i * p_j, p_i * p_j
@@ -84,11 +94,7 @@ out = load_h5_file(os.path.join(base_path, city, f"out_{ob}_{uq_method}.h5"))
 base_map = load_h5_file(os.path.join(map_path, city, f"{city}_static.h5"))[0]
 
 # Mean outlier percentage per pixel across samp dim
-cmap = plt.get_cmap("OrRd")
-my_cmap = cmap(np.arange(cmap.N))
-my_cmap[:, -1] = np.linspace(0, 1, cmap.N) # add transparency gradient
-my_cmap = ListedColormap(my_cmap)
-
+my_cmap = make_cmap()
 fig, axes = plt.subplots(1, 3, figsize=(8, 3))
 lab = ["vol", "speed", "pixel"]
 for i, ax in enumerate(axes.flat):
@@ -135,11 +141,7 @@ r = 152 # center pixel height (y-axis T to B)
 c = 60 # center pixel width (x-axis L to R)
 num = 8 # display: center +- num
 
-cmap = plt.get_cmap("OrRd")
-my_cmap = cmap(np.arange(cmap.N))
-my_cmap[:, -1] = np.linspace(0, 1, cmap.N) # add transparency gradient
-my_cmap = ListedColormap(my_cmap)
-
+my_cmap = make_cmap()
 fig, axes = plt.subplots(1, 3, figsize=(8, 3))
 lab = ["vol", "speed", "pixel"]
 for o, ax in enumerate(axes.flat):
