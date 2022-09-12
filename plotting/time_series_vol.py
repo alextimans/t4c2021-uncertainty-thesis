@@ -27,14 +27,14 @@ datetime.time(hour=t // 12, minute=t % 12 * 5).isoformat(timespec="minutes")
 
 ### Multiple plot
 
-s = 10
-city = "MOSCOW" # BANGKOK, BARCELONA, MOSCOW
+s = 7
+city = "BARCELONA" # BANGKOK, BARCELONA, MOSCOW
 path = os.path.join("data", "raw", city, "train", f"*_{city}_8ch.h5")
 files = sorted(glob.glob(path, recursive=True))
 rand_idx = random.sample(range(len(files)), s)
 file = [files[i] for i in rand_idx]
-m = 110
-e = 246
+m = 100
+e = 210
 
 ts = torch.empty((288, s))
 for i, f in enumerate(file):
@@ -44,11 +44,11 @@ for i, f in enumerate(file):
 for i in range(s):
     plt.plot(ts[:, i], label=file[i].split("/")[-1].split("_")[0])
 
-plt.axvline(m, color="red", linestyle=":", label=f"morning {m}")
+plt.axvline(m, color="red", linestyle=":", label=f"Morning ({m})")
 plt.axvline(m+12, color="red", linestyle=":")
-plt.axvline(e, color="blue", linestyle=":", label=f"evening {e}")
+plt.axvline(e, color="blue", linestyle=":", label=f"Evening ({e})")
 plt.axvline(e+12, color="blue", linestyle=":")
 
-plt.title(city)
+plt.title(city.capitalize())
 plt.legend()
 plt.show()

@@ -17,6 +17,7 @@ from util.get_device import get_device
 from util.set_seed import set_seed
 
 from uq.eval_model import eval_test, eval_calib
+# replace and uncomment below for evaluating TTA + Ens combination and call eval_tta_ensemble
 # from uq.eval_tta_ensemble import eval_test, eval_calib
 
 

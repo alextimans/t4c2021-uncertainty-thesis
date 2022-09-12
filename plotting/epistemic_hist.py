@@ -72,12 +72,12 @@ def epistemic_hist(fig_path: str,
             # ts_vol = check_ts(ts_vol)
             # ts_speed = check_ts(ts_speed)
 
-            axs1[i].hist(ts_vol, bins=20, alpha=0.45, color="blue", density=True)
+            axs1[i].hist(ts_vol, bins=10, alpha=0.5, color="blue", density=True)
             plot_normal(ts_vol, axs1[i])
             plot_kde(ts_vol, axs1[i])
             axs1[i].legend(fontsize="small")
 
-            axs2[i].hist(ts_speed, bins=20, alpha=0.45, color="blue", density=True)
+            axs2[i].hist(ts_speed, bins=10, alpha=0.5, color="blue", density=True)
             plot_normal(ts_speed, axs2[i])
             plot_kde(ts_speed, axs2[i])
             axs2[i].legend(fontsize="small")
