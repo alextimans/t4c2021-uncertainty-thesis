@@ -1,9 +1,10 @@
 
 ## Overview
-This is the code repository for my master thesis at ETH Zurich titled "Uncertainty Quantification for Image-based Traffic Prediction", submitted in 09/2022. You can reach out via mail at 'alex dot timans at hotmail dot com' in case of questions. <br>
+This is the code repository for my master thesis at ETH Zurich titled "Uncertainty Quantification for Image-based Traffic Prediction", submitted in Sept. 2022. You can reach out via mail at 'alex dot timans at hotmail dot com' in case of questions.
+
 Supervisors: Dr. Lukas Meier [[LM]](https://stat.ethz.ch/~meier/), Prof. Dr. Martin Raubal [[MR]](https://www.raubal.ethz.ch), direct supervision by Ye Hong [[YH]](https://ikg.ethz.ch/en/people/staff-a-z/person-detail.MjUzMDAx.TGlzdC8xMDMxLC05MDgxNDI5Mg==.html), Nina Wiedemann [[NW]](https://baug.ethz.ch/departement/personen/mitarbeiter/personen-detail.MjUzNzEy.TGlzdC82NzksLTU1NTc1NDEwMQ==.html) and Nishant Kumar [[NK]](https://frs.ethz.ch/people/researchers/NishantKUMAR.html).
 
-### Abstract
+### Abstract :memo:
 ---
 Despite the strong predictive performance of deep learning models for traffic prediction, their widespread deployment in real-world intelligent transportation systems has been restricted by a lack of interpretability and perceived trustworthiness. Uncertainty quantification (UQ) methods provide an approach to induce probabilistic reasoning, improve decision-making and enhance model deployment potential. This study investigates the application of different UQ methods for short-term traffic prediction on the image-based *Traffic4cast* dataset. We compare two epistemic and two aleatoric UQ methods on both temporal and spatio-temporal transfer tasks, and find that meaningful uncertainty estimates can be recovered. Methods are compared in terms of uncertainty calibration and sharpness, and our experiments suggest that modelling both epistemic and aleatoric uncertainty jointly produces the most accurate uncertainty estimates. Obtained uncertainty estimates are spatially related to the city-wide road network, and subsequently employed for unsupervised outlier detection on changes in city traffic dynamics. We find that our approach can capture both temporal and spatial effects on traffic behaviour, and that their interaction is complex. Our work presents a further step towards boosting uncertainty awareness in traffic prediction tasks, and aims to showcase the potential value contribution of UQ methods to the development of intelligent transportation systems, and to a better understanding of city traffic dynamics. 
 
@@ -42,7 +43,7 @@ To run the code, guidelines are provided below.
 ```
 gh repo clone alextimans/t4c2021-uncertainty-thesis
 ```
-- :warning: Make sure to be in the parent directory of ```t4c2021-uncertainty-thesis``` as working directory. Let's call it ```run-code```, so set working directory to ```run-code```. This directory is also the one from which to launch code runs, which is why the provided sample runs below follow the scheme ```python t4c-2021-uncertainty-thesis/[script.py -args]```.
+- :warning: Make sure to be in the parent directory of ```t4c2021-uncertainty-thesis``` as working directory. Let's call it ```run-code```, so set working directory to ```run-code```. This directory is also the one from which to launch code runs, which is why the provided sample runs below follow the scheme ```python t4c2021-uncertainty-thesis/[script.py -args]```.
 
 2. Set-up python env (with conda package manager)
 - Either generate python env using the 
