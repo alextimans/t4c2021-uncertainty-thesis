@@ -1,7 +1,15 @@
 
 ## Overview
-This is the code repository for my master thesis at ETH Zurich titled "Uncertainty Quantification for Image-based Traffic Prediction", submitted in 09/2022.
+This is the code repository for my master thesis at ETH Zurich titled "Uncertainty Quantification for Image-based Traffic Prediction", submitted in 09/2022. You can reach out via mail at 'alex dot timans at hotmail dot com' in case of questions. <br>
+Supervisors: Dr. Lukas Meier [[LM]](https://stat.ethz.ch/~meier/), Prof. Dr. Martin Raubal [[MR]](https://www.raubal.ethz.ch), direct supervision by Ye Hong [[YH]](https://ikg.ethz.ch/en/people/staff-a-z/person-detail.MjUzMDAx.TGlzdC8xMDMxLC05MDgxNDI5Mg==.html), Nina Wiedemann [[NW]](https://baug.ethz.ch/departement/personen/mitarbeiter/personen-detail.MjUzNzEy.TGlzdC82NzksLTU1NTc1NDEwMQ==.html) and Nishant Kumar [[NK]](https://frs.ethz.ch/people/researchers/NishantKUMAR.html).
 
+### Abstract
+---
+Despite the strong predictive performance of deep learning models for traffic prediction, their widespread deployment in real-world intelligent transportation systems has been restricted by a lack of interpretability and perceived trustworthiness. Uncertainty quantification (UQ) methods provide an approach to induce probabilistic reasoning, improve decision-making and enhance model deployment potential. This study investigates the application of different UQ methods for short-term traffic prediction on the image-based *Traffic4cast* dataset. We compare two epistemic and two aleatoric UQ methods on both temporal and spatio-temporal transfer tasks, and find that meaningful uncertainty estimates can be recovered. Methods are compared in terms of uncertainty calibration and sharpness, and our experiments suggest that modelling both epistemic and aleatoric uncertainty jointly produces the most accurate uncertainty estimates. Obtained uncertainty estimates are spatially related to the city-wide road network, and subsequently employed for unsupervised outlier detection on changes in city traffic dynamics. We find that our approach can capture both temporal and spatial effects on traffic behaviour, and that their interaction is complex. Our work presents a further step towards boosting uncertainty awareness in traffic prediction tasks, and aims to showcase the potential value contribution of UQ methods to the development of intelligent transportation systems, and to a better understanding of city traffic dynamics. 
+
+---
+
+## Folder structure
 The folder structure is quite self explanatory, but here are some comments on each folder or file on the main repository level:
 ```
 t4c2021-uncertainty-thesis/
@@ -13,7 +21,7 @@ t4c2021-uncertainty-thesis/
 ├── uq: contains the implementations of evaluated UQ methods, as well as the test set and outlier detection evaluation scripts to produce results. This is the most important folder.
 ├── util: contains utility functions such as read/write data, set seed or get device. The most important file in here is 'h5_util.py'.
 ├── env_current.yml: The package environment file as used by myself.
-├── env_t4c.yml: The package environment file as given by the Traffic4cast 2021 challenge organizers (https://github.com/iarai/NeurIPS2021-traffic4cast)
+├── env_t4c.yml: The package environment file as given by the *Traffic4cast* 2021 challenge organizers (https://github.com/iarai/NeurIPS2021-traffic4cast)
 └── main.py: The main script to run model training and inference via CLI.
 ```
 The implemented UQ methods as mentioned in the thesis report correspond to the following names used in the code, in particular regarding argument names for parameter ```uq_method``` in ```main.py``` or names used in the inference scripts ```eval_model.py```, ```eval_tta_ensemble.py``` and ```outlier_detection.py``` :
@@ -26,7 +34,7 @@ The implemented UQ methods as mentioned in the thesis report correspond to the f
 | TTA | tta |
 | Patches | patches |
 
-To run our code, we provide some guidelines below.
+To run the code, guidelines are provided below.
 
 ### Local code run preparation
 
@@ -34,10 +42,11 @@ To run our code, we provide some guidelines below.
 ```
 gh repo clone alextimans/t4c2021-uncertainty-thesis
 ```
-- Make sure to be in the parent directory of ```t4c2021-uncertainty-thesis``` as working directory.
+- :warning: Make sure to be in the parent directory of ```t4c2021-uncertainty-thesis``` as working directory. Let's call it ```run-code```, so set working directory to ```run-code```. This directory is also the one from which to launch code runs, which is why the provided sample runs below follow the scheme ```python t4c-2021-uncertainty-thesis/[script.py -args]```.
 
 2. Set-up python env (with conda package manager)
-- Either generate python env using the Traffic4cast competition environment via ```env_t4c.yml``` and add potentially missing packages manually, or use ```env_current.yml``` for a more stringent but encompassing environment.
+- Either generate python env using the 
+competition environment via ```env_t4c.yml``` and add potentially missing packages manually, or use ```env_current.yml``` for a more stringent but encompassing environment.
 - Uncomment related lines in either ```.yml``` file in case of local machine with GPU support.
 ```
 conda env create -f t4c2021-uncertainty-thesis/misc/env_current.yml
@@ -51,16 +60,16 @@ cd ..
 ```
 
 3. Prepare the data
-- Get the data by visiting the [Traffic4cast webpage](https://www.iarai.ac.at/traffic4cast/2021-competition/challenge/) and following instructions on accessing the data. Note: this requires registration.
-- Put all the data in a folder ```[parent dir]/data/raw``` in the parent directory in uncompressed city folders as given by the Traffic4cast competition.
+- Get the data by visiting the [Traffic4cast webpage](https://www.iarai.ac.at/traffic4cast/2021-competition/challenge/) and following instructions on accessing the data. **Note:** this requires registration with the competition website.
+- Put all the data in a folder ```run-code/data/raw``` in the working directory in uncompressed city folders as given by the *Traffic4cast* competition.
 - Run the following call in CLI to create data folders in line with the data structure used in this work and remove 2020 leap year days.
 ```
   python t4c2021-uncertainty-thesis/data/set_data_folder_str.py --data_raw_path="./data/raw" --remove_leap_days=True
 ```
-- The data should now be separated into ```train```, ```val``` and ```test``` folders.
+- The data should now be separated into ```train```, ```val``` and ```test``` folders within ```run-code/data/raw/[city]```.
 
 4. Ready! Execute desired code runs as listed below. 
-5. **Note:** These commands are all for running code on your local machine. This may not be particularly suitable for e.g. model training or inference on large portions of the data, since runtimes will be extremely long. Most of the heavy computations for this work were executed on GPUs on a computing cluster. The provided runs are only sample runs to visualize the use of our commands. To fully replicate results please check the details provided in the thesis report and adjust parameter values accordingly. 
+5. **Note:** These commands are all for running code on your local machine. This may not be particularly suitable for e.g. model training or inference on large portions of the data, since runtimes will be extremely long. Most of the heavy computations for this work were executed on GPUs on a computing cluster. The provided runs are only sample runs to visualize the use of commands and arguments. To fully replicate results please check the details provided in the thesis report and adjust parameter values accordingly.
 
 ### Local code runs
 
@@ -116,7 +125,7 @@ python t4c2021-uncertainty-thesis/plotting/epistemic_hist.py --test_pred_path="[
 
 ### Other code info
 
-- Model runs perform a healthy amount of logging info to keep the code run process transparent.
+- Model runs perform a healthy amount of logging info to keep the code run process transparent, and also contains multiple assert statements for file path checks.
 
 - Running the training sample run from scratch should result in a folder ```unet_1``` created in ```[parent dir]/checkpoints``` with a bunch of loss files. There are: train + val loss files per batch and per epoch. On top there should be two model checkpoint files (e.g. ```unet_ep0_05061706.pt``` and ```unet_ep1_05061707.pt``` because we trained for two epochs and save each epoch as set by the ```save_each_epoch``` params in ```t4c2021-uncertainty-thesis/model/configs.py, earlystop_config```.)
 
