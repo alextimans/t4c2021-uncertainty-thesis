@@ -47,10 +47,10 @@ gh repo clone alextimans/t4c2021-uncertainty-thesis
 
 2. Set-up python env (with conda package manager)
 - Either generate python env using the 
-competition environment via ```env_t4c.yml``` and add potentially missing packages manually, or use ```env_current.yml``` for a more stringent but encompassing environment.
+competition environment via ```env_t4c.yml``` and add potentially missing packages manually, or use ```env_curr.yml``` for a more stringent but encompassing environment.
 - Uncomment related lines in either ```.yml``` file in case of local machine with GPU support.
 ```
-conda env create -f t4c2021-uncertainty-thesis/misc/env_current.yml
+conda env create -f t4c2021-uncertainty-thesis/misc/env_curr.yml
 conda activate t4c
 ```
 - Initialize the code repo by resetting the python path
